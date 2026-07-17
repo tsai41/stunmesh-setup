@@ -1,0 +1,8 @@
+# secrets & runtime artifacts
+wg.key
+settings.env
+stunmesh0.conf
+config.yaml
+stunmesh.log
+stunmesh.pid
+stunmesh-go

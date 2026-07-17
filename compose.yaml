@@ -1,0 +1,11 @@
+services:
+  dhtnode:
+    image: ghcr.io/savoirfairelinux/opendht/opendht
+    container_name: dhtnode
+    # dhtnode exits immediately without an open stdin (interactive command loop)
+    stdin_open: true
+    command: dhtnode -b bootstrap.jami.net:4222 --proxyserver 8080
+    ports:
+      # loopback only: the DHT proxy REST API is unauthenticated
+      - "127.0.0.1:8080:8080"
+    restart: unless-stopped

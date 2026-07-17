@@ -1,0 +1,193 @@
+#!/usr/bin/env bash
+# setup.sh — one-time install & configuration (run once per machine, macOS/Linux)
+# Usage: ./setup.sh --node A|B [--peer-key <KEY>]  (re-run anytime; asks for the peer key)
+set -euo pipefail
+cd "$(dirname "$0")"
+. ./lib.sh
+
+STUNMESH_VERSION="v1.9.0"
+
+NODE=""
+PEER_KEY=""
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --node) NODE="$2"; shift 2 ;;
+    --peer-key) PEER_KEY="$2"; shift 2 ;;
+    *) echo "unknown argument: $1" >&2; exit 1 ;;
+  esac
+done
+
+# re-runs reuse previous settings.env values
+if [[ -z "$PEER_KEY" && -f settings.env ]]; then
+  PEER_KEY="$(. ./settings.env && echo "${PEER_KEY:-}")"
+fi
+if [[ -z "$NODE" && -f settings.env ]]; then
+  NODE="$(. ./settings.env && echo "${NODE:-}")"
+fi
+
+NODE="$(echo "$NODE" | tr '[:lower:]' '[:upper:]')"
+if [[ "$NODE" != "A" && "$NODE" != "B" ]]; then
+  echo "usage: ./setup.sh --node A|B [--peer-key <peer public key>]" >&2
+  echo "  use --node A on one machine and --node B on the other (decides tunnel IP)" >&2
+  exit 1
+fi
+
+# strict format also keeps shell metacharacters out of settings.env, which gets sourced
+if [[ -n "$PEER_KEY" && ! "$PEER_KEY" =~ ^[A-Za-z0-9+/]{43}=$ ]]; then
+  echo "✗ Invalid --peer-key: expected a 44-character base64 WireGuard public key" >&2
+  exit 1
+fi
+
+if [[ "$NODE" == "A" ]]; then
+  SELF_IP="10.66.0.1"; PEER_IP="10.66.0.2"
+else
+  SELF_IP="10.66.0.2"; PEER_IP="10.66.0.1"
+fi
+
+# check-only by design: report what is missing, never install
+echo "==> Checking dependencies"
+MISSING=0
+_need() {  # _need <command> <install hint>
+  if ! command -v "$1" >/dev/null; then
+    echo "✗ missing: $1 — install: $2" >&2
+    MISSING=1
+  fi
+}
+
+case "$OS" in
+  Darwin)
+    # App Store WireGuard is sandboxed and unusable with stunmesh-go; use brew's wireguard-go
+    _need wireguard-go "brew install wireguard-go"
+    _need wg           "brew install wireguard-tools"
+    _need wg-quick     "brew install wireguard-tools"
+    _need jq           "brew install jq"
+    ;;
+  Linux)
+    # kernel >= 5.6 ships WireGuard built in; only userspace tools needed
+    _need wg       "sudo apt-get install wireguard-tools (or dnf/pacman equivalent)"
+    _need wg-quick "sudo apt-get install wireguard-tools (or dnf/pacman equivalent)"
+    _need jq       "sudo apt-get install jq (or dnf/pacman equivalent)"
+    _need curl     "sudo apt-get install curl (or dnf/pacman equivalent)"
+    # warn only: version compare would false-negative on distros that backport WireGuard
+    if command -v modinfo >/dev/null && ! modinfo wireguard >/dev/null 2>&1; then
+      echo "⚠ WireGuard kernel module not detected (kernel >= 5.6 has it built in);" >&2
+      echo "  if 'wg-quick up' fails later, install your distro's wireguard/wireguard-dkms package" >&2
+    fi
+    ;;
+  *) echo "✗ Unsupported OS: $OS (macOS / Linux only)" >&2; exit 1 ;;
+esac
+
+if [[ "$OS" == "Darwin" ]]; then
+  _need docker "Docker Desktop (https://docker.com/products/docker-desktop) or 'brew install colima docker && colima start'"
+else
+  _need docker "sudo apt-get install docker.io (or your distro's package)"
+fi
+
+if (( MISSING )); then
+  echo "✗ Install the missing dependencies above, then re-run ./setup.sh" >&2
+  exit 1
+fi
+if ! docker compose version >/dev/null 2>&1; then
+  echo "✗ docker compose plugin missing (bundled with Docker Desktop; Linux: docker-compose-plugin package)" >&2
+  exit 1
+fi
+if ! docker info >/dev/null 2>&1; then
+  echo "✗ Cannot talk to Docker daemon." >&2
+  echo "  macOS: start Docker Desktop / colima start" >&2
+  echo "  Linux: sudo systemctl start docker; if it is running, add yourself to the docker group (sudo usermod -aG docker \$USER, then re-login)" >&2
+  exit 1
+fi
+echo "    ok"
+
+echo "==> Downloading stunmesh-go ${STUNMESH_VERSION}"
+case "$OS" in
+  Darwin) OSKEY="darwin" ;;
+  Linux)  OSKEY="linux" ;;
+esac
+case "$(uname -m)" in
+  arm64|aarch64) BIN="stunmesh-${OSKEY}-arm64-${STUNMESH_VERSION}" ;;
+  x86_64)        BIN="stunmesh-${OSKEY}-amd64-${STUNMESH_VERSION}" ;;
+  *) echo "✗ Unsupported arch: $(uname -m)" >&2; exit 1 ;;
+esac
+if [[ -x stunmesh-go ]]; then
+  echo "    already present, skipping"
+else
+  curl -fSL --progress-bar -o stunmesh-go \
+    "https://github.com/tjjh89017/stunmesh-go/releases/download/${STUNMESH_VERSION}/${BIN}"
+  chmod +x stunmesh-go
+fi
+
+echo "==> Pulling OpenDHT image"
+docker compose pull -q
+
+echo "==> WireGuard keypair"
+if [[ ! -f wg.key ]]; then
+  (umask 077 && wg genkey > wg.key)
+fi
+PUB_KEY="$(wg pubkey < wg.key)"
+
+if [[ -n "$PEER_KEY" && "$PEER_KEY" == "$PUB_KEY" ]]; then
+  echo "✗ --peer-key is this machine's OWN public key." >&2
+  echo "  Paste the key printed by the OTHER machine; send yours ($PUB_KEY) to it instead." >&2
+  exit 1
+fi
+
+echo
+echo "════════════════════════════════════════════════════"
+echo " This machine's public key — SEND it to the OTHER machine:"
+echo "   $PUB_KEY"
+echo "════════════════════════════════════════════════════"
+echo
+
+if [[ -z "$PEER_KEY" && -t 0 ]]; then
+  while :; do
+    read -r -p "Paste the key the OTHER machine printed (Enter to skip if you don't have it yet): " ANSWER
+    [[ -z "$ANSWER" ]] && break
+    if [[ "$ANSWER" == "$PUB_KEY" ]]; then
+      echo "  ✗ that is THIS machine's key — you need the one printed on the other machine"
+      continue
+    fi
+    if [[ ! "$ANSWER" =~ ^[A-Za-z0-9+/]{43}=$ ]]; then
+      echo "  ✗ not a valid key (expected 44-character base64)"
+      continue
+    fi
+    PEER_KEY="$ANSWER"
+    break
+  done
+fi
+
+cat > settings.env <<EOF
+NODE=$NODE
+SELF_IP=$SELF_IP
+PEER_IP=$PEER_IP
+PEER_KEY=$PEER_KEY
+EOF
+
+if [[ -z "$PEER_KEY" ]]; then
+  echo
+  echo "⚠ No peer key yet — that's fine. Send your key above to the other machine,"
+  echo "  run setup there, then come back and run ./setup.sh --node $NODE again;"
+  echo "  it will ask for the key. (Lost? make next)"
+  exit 0
+fi
+
+# Endpoint omitted on purpose — stunmesh-go fills it in via DHT
+(umask 077 && cat > "${WG_CONF_NAME}.conf" <<EOF
+[Interface]
+PrivateKey = $(cat wg.key)
+Address = ${SELF_IP}/24
+
+[Peer]
+PublicKey = ${PEER_KEY}
+AllowedIPs = 10.66.0.0/24
+PersistentKeepalive = 25
+EOF
+)
+
+# keep a hand-edited config.yaml in sync with the new peer key
+if [[ -f config.yaml ]]; then
+  sed -i.bak -E "s|^( *public_key: \").*(\")|\\1${PEER_KEY}\\2|" config.yaml
+  rm -f config.yaml.bak
+fi
+
+echo "✓ Setup complete. Start with: ./start.sh (or make start)"
