@@ -9,7 +9,7 @@ next:
 	@./next.sh
 
 setup:
-	./setup.sh $(if $(NODE),--node "$(NODE)") $(if $(PEER_KEY),--peer-key "$(PEER_KEY)")
+	./setup.sh $(if $(NODE),--node "$(NODE)") $(if $(PEER_KEY),--peer-key "$(PEER_KEY)") $(if $(IP),--ip "$(IP)") $(if $(PEER_IP),--peer-ip "$(PEER_IP)")
 
 start:
 	./start.sh

@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # setup.sh — one-time install & configuration (run once per machine, macOS/Linux)
-# Usage: ./setup.sh --node A|B [--peer-key <KEY>]  (re-run anytime; asks for the peer key)
+# Usage: ./setup.sh --node A|B [--peer-key <KEY>] [--ip <self>] [--peer-ip <peer>]
+# Re-run anytime; asks for the peer key. Default IPs: A=10.66.0.1, B=10.66.0.2.
 set -euo pipefail
 cd "$(dirname "$0")"
 . ./lib.sh
@@ -9,20 +10,24 @@ STUNMESH_VERSION="v1.9.0"
 
 NODE=""
 PEER_KEY=""
+SELF_IP=""
+PEER_IP=""
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --node) NODE="$2"; shift 2 ;;
     --peer-key) PEER_KEY="$2"; shift 2 ;;
+    --ip) SELF_IP="$2"; shift 2 ;;
+    --peer-ip) PEER_IP="$2"; shift 2 ;;
     *) echo "unknown argument: $1" >&2; exit 1 ;;
   esac
 done
 
 # re-runs reuse previous settings.env values
-if [[ -z "$PEER_KEY" && -f settings.env ]]; then
-  PEER_KEY="$(. ./settings.env && echo "${PEER_KEY:-}")"
-fi
-if [[ -z "$NODE" && -f settings.env ]]; then
-  NODE="$(. ./settings.env && echo "${NODE:-}")"
+if [[ -f settings.env ]]; then
+  [[ -z "$PEER_KEY" ]] && PEER_KEY="$(. ./settings.env && echo "${PEER_KEY:-}")"
+  [[ -z "$NODE" ]]     && NODE="$(. ./settings.env && echo "${NODE:-}")"
+  [[ -z "$SELF_IP" ]]  && SELF_IP="$(. ./settings.env && echo "${SELF_IP:-}")"
+  [[ -z "$PEER_IP" ]]  && PEER_IP="$(. ./settings.env && echo "${PEER_IP:-}")"
 fi
 
 NODE="$(echo "$NODE" | tr '[:lower:]' '[:upper:]')"
@@ -38,10 +43,26 @@ if [[ -n "$PEER_KEY" && ! "$PEER_KEY" =~ ^[A-Za-z0-9+/]{43}=$ ]]; then
   exit 1
 fi
 
-if [[ "$NODE" == "A" ]]; then
-  SELF_IP="10.66.0.1"; PEER_IP="10.66.0.2"
-else
-  SELF_IP="10.66.0.2"; PEER_IP="10.66.0.1"
+if [[ -z "$SELF_IP" ]]; then
+  [[ "$NODE" == "A" ]] && SELF_IP="10.66.0.1" || SELF_IP="10.66.0.2"
+fi
+if [[ -z "$PEER_IP" ]]; then
+  [[ "$NODE" == "A" ]] && PEER_IP="10.66.0.2" || PEER_IP="10.66.0.1"
+fi
+for ip in "$SELF_IP" "$PEER_IP"; do
+  if [[ ! "$ip" =~ ^([0-9]{1,3}\.){3}[0-9]{1,3}$ ]]; then
+    echo "✗ Invalid IPv4 address: $ip" >&2
+    exit 1
+  fi
+done
+# wg conf uses a /24 derived from the self IP; both ends must live in it
+if [[ "${SELF_IP%.*}" != "${PEER_IP%.*}" ]]; then
+  echo "✗ --ip $SELF_IP and --peer-ip $PEER_IP are not in the same /24" >&2
+  exit 1
+fi
+if [[ "$SELF_IP" == "$PEER_IP" ]]; then
+  echo "✗ --ip and --peer-ip must differ" >&2
+  exit 1
 fi
 
 # check-only by design: report what is missing, never install
@@ -179,7 +200,7 @@ Address = ${SELF_IP}/24
 
 [Peer]
 PublicKey = ${PEER_KEY}
-AllowedIPs = 10.66.0.0/24
+AllowedIPs = ${SELF_IP%.*}.0/24
 PersistentKeepalive = 25
 EOF
 )

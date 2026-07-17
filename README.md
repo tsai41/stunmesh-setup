@@ -37,6 +37,8 @@ Setup is interactive: it prints **this machine's key to send away**, then **asks
 
 Setup is done when **both** machines have the other's key. Keys are public, not secrets — chat/AirDrop is fine.
 
+Custom tunnel IPs: `--ip <self> --peer-ip <peer>` (same /24; defaults A=10.66.0.1, B=10.66.0.2). Must mirror each other on the two machines — A's `--ip` is B's `--peer-ip` and vice versa. Re-runs keep previously set IPs.
+
 ## Usage
 
 ```bash
