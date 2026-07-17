@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # stop.sh — stop stunmesh-go + WireGuard + dhtnode (container kept for next start)
 set -euo pipefail
-cd "$(dirname "$0")"
-. ./lib.sh
+cd "$(dirname "$0")/.."
+. ./scripts/lib.sh
 
 echo "==> stunmesh-go"
 if PID="$(_stunmesh_pid)"; then
@@ -11,11 +11,11 @@ if PID="$(_stunmesh_pid)"; then
 else
   echo "    not running"
 fi
-rm -f stunmesh.pid
+rm -f "$STATE/stunmesh.pid"
 
 echo "==> WireGuard"
 if _wg_running; then
-  sudo env PATH="$PATH" wg-quick down "$PWD/${WG_CONF_NAME}.conf"
+  sudo env PATH="$PATH" wg-quick down "$PWD/$WG_CONF"
 else
   echo "    not running"
 fi

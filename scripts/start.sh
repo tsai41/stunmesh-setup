@@ -1,14 +1,14 @@
 #!/usr/bin/env bash
 # start.sh — dhtnode (compose) -> wg-quick -> stunmesh-go; sudo needed for interface + daemon
 set -euo pipefail
-cd "$(dirname "$0")"
-. ./lib.sh
+cd "$(dirname "$0")/.."
+. ./scripts/lib.sh
 
-[[ -f settings.env ]] || { echo "✗ Run ./setup.sh first" >&2; exit 1; }
-. ./settings.env
+[[ -f "$STATE/settings.env" ]] || { echo "✗ Run make setup first" >&2; exit 1; }
+. "./$STATE/settings.env"
 # a hand-edited config.yaml carries its own peer key; only generation needs settings.env's
-if [[ ! -f config.yaml && -z "${PEER_KEY:-}" ]]; then
-  echo "✗ Peer public key missing; run ./setup.sh --node $NODE --peer-key <KEY> (or hand-edit config.yaml)" >&2
+if [[ ! -f "$STATE/config.yaml" && -z "${PEER_KEY:-}" ]]; then
+  echo "✗ Peer public key missing; run make setup NODE=$NODE PEER_KEY=<KEY> (or hand-edit $STATE/config.yaml)" >&2
   exit 1
 fi
 docker info >/dev/null 2>&1 || { echo "✗ Docker daemon not running; start Docker Desktop / colima / systemctl start docker" >&2; exit 1; }
@@ -54,7 +54,7 @@ if _wg_running; then
   echo "    already up, skipping"
 else
   # keep PATH under sudo so wg-quick can find brew-installed wireguard-go
-  sudo env PATH="$PATH" wg-quick up "$PWD/${WG_CONF_NAME}.conf"
+  sudo env PATH="$PATH" wg-quick up "$PWD/$WG_CONF"
 fi
 if [[ "$OS" == "Darwin" ]]; then
   UTUN="$(cat "$WG_NAME_FILE")"
@@ -63,14 +63,14 @@ else
 fi
 echo "    interface: $UTUN ($SELF_IP)"
 
-if [[ -f config.yaml ]]; then
+if [[ -f "$STATE/config.yaml" ]]; then
   # keep user edits; only the interface name changes per boot on macOS
-  sed -i.bak -E "s/^(  \")(utun[0-9]+|${WG_CONF_NAME})(\":)/\\1${UTUN}\\3/" config.yaml
-  rm -f config.yaml.bak
+  sed -i.bak -E "s/^(  \")(utun[0-9]+|${WG_CONF_NAME})(\":)/\\1${UTUN}\\3/" "$STATE/config.yaml"
+  rm -f "$STATE/config.yaml.bak"
   echo "    using existing config.yaml (interface set to $UTUN)"
 else
 # utun name may differ per boot, so config is generated at start time
-cat > config.yaml <<EOF
+cat > "$STATE/config.yaml" <<EOF
 ---
 refresh_interval: "1m"
 log:
@@ -106,11 +106,12 @@ echo "==> stunmesh-go"
 if PID="$(_stunmesh_pid)"; then
   echo "    already running (pid $PID), skipping"
 else
-  sudo bash -c "cd '$PWD' && nohup ./stunmesh-go >> stunmesh.log 2>&1 & echo \$! > stunmesh.pid"
-  echo "    started (pid $(cat stunmesh.pid)), log: stunmesh.log"
+  # stunmesh-go reads config.yaml from cwd, so run inside state/
+  sudo bash -c "cd '$PWD/$STATE' && nohup ./stunmesh-go >> stunmesh.log 2>&1 & echo \$! > stunmesh.pid"
+  echo "    started (pid $(cat "$STATE/stunmesh.pid")), log: $STATE/stunmesh.log"
 fi
 
 echo
 echo "✓ All started. Once both machines are up, the tunnel forms in ~1-2 min. Verify:"
 echo "  ping $PEER_IP"
-echo "  tail -f stunmesh.log"
+echo "  tail -f $STATE/stunmesh.log"

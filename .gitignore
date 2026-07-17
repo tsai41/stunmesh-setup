@@ -1,8 +1,11 @@
 # secrets & runtime artifacts
-wg.key
-settings.env
-stunmesh0.conf
-config.yaml
-stunmesh.log
-stunmesh.pid
-stunmesh-go
+state/
+
+# pre-scripts/ layout: ignore until setup.sh migrates them into state/
+/wg.key
+/settings.env
+/stunmesh0.conf
+/config.yaml
+/stunmesh.log
+/stunmesh.pid
+/stunmesh-go

@@ -6,16 +6,16 @@
 .PHONY: setup start stop status logs next
 
 next:
-	@./next.sh
+	@./scripts/next.sh
 
 setup:
-	./setup.sh $(if $(NODE),--node "$(NODE)") $(if $(PEER_KEY),--peer-key "$(PEER_KEY)") $(if $(IP),--ip "$(IP)") $(if $(PEER_IP),--peer-ip "$(PEER_IP)")
+	./scripts/setup.sh $(if $(NODE),--node "$(NODE)") $(if $(PEER_KEY),--peer-key "$(PEER_KEY)") $(if $(IP),--ip "$(IP)") $(if $(PEER_IP),--peer-ip "$(PEER_IP)")
 
 start:
-	./start.sh
+	./scripts/start.sh
 
 stop:
-	./stop.sh
+	./scripts/stop.sh
 
 status:
 	@docker ps --filter name=dhtnode --format 'dhtnode:     {{.Status}}' | grep . || echo 'dhtnode:     not running'
@@ -23,4 +23,4 @@ status:
 	@pgrep -f stunmesh-go >/dev/null && echo 'stunmesh-go: running' || echo 'stunmesh-go: not running'
 
 logs:
-	tail -f stunmesh.log
+	tail -f state/stunmesh.log

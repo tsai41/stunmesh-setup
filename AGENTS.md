@@ -8,13 +8,13 @@ Wrapper scripts building a WireGuard P2P tunnel between exactly two machines (no
 
 ## File map
 
-- `setup.sh` — one-time per machine: check-only dependency preflight (never installs), download binary, generate wg keypair, write `settings.env` + `stunmesh0.conf`
-- `start.sh` / `stop.sh` — lifecycle: compose up dhtnode → wait DHT bootstrap → wg-quick → stunmesh-go (root, pidfile)
-- `next.sh` — state-machine guide printing the single next step (`make next`)
-- `lib.sh` — shared: `OS`, `WG_CONF_NAME`, `_wg_running`, `_stunmesh_pid`
+- `scripts/setup.sh` — one-time per machine: check-only dependency preflight (never installs), download binary, generate wg keypair, write `state/settings.env` + `state/stunmesh0.conf`
+- `scripts/start.sh` / `scripts/stop.sh` — lifecycle: compose up dhtnode → wait DHT bootstrap → wg-quick → stunmesh-go (root, pidfile; runs with cwd `state/`)
+- `scripts/next.sh` — state-machine guide printing the single next step (`make next`)
+- `scripts/lib.sh` — shared: `STATE`, `OS`, `WG_CONF_NAME`, `WG_CONF`, `_wg_running`, `_stunmesh_pid`; all scripts `cd` to repo root first
 - `compose.yaml` — dhtnode container; port bound to loopback; `container_name` pinned
 - `Makefile` — thin launcher: `setup NODE=A PEER_KEY=…`, `start`, `stop`, `status`, `logs`, `next`
-- Runtime files (gitignored, in repo root): `settings.env` (metadata, not secret), `wg.key` + `stunmesh0.conf` (SECRETS), `config.yaml`, `stunmesh.log`, `stunmesh.pid`, `stunmesh-go` binary
+- Runtime files (all under `state/`, gitignored as a directory): `settings.env` (metadata, not secret), `wg.key` + `stunmesh0.conf` (SECRETS), `config.yaml`, `stunmesh.log`, `stunmesh.pid`, `stunmesh-go` binary
 
 ## Invariants — do not break
 
@@ -28,9 +28,9 @@ Wrapper scripts building a WireGuard P2P tunnel between exactly two machines (no
 ## Verify changes
 
 ```bash
-bash -n setup.sh start.sh stop.sh next.sh lib.sh && shellcheck *.sh   # SC1091 info is expected
+bash -n scripts/*.sh && shellcheck scripts/*.sh   # SC1090 warning is expected
 docker compose config >/dev/null
-make -n setup NODE=A PEER_KEY=x && make status && ./setup.sh --node X  # error paths
+make -n setup NODE=A PEER_KEY=x && make status && ./scripts/setup.sh --node X  # error paths
 ```
 
-Real tunnel verification needs both machines: `./start.sh` on each, then `ping 10.66.0.2` / `10.66.0.1`.
+Real tunnel verification needs both machines: `make start` on each, then `ping 10.66.0.2` / `10.66.0.1`.
