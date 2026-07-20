@@ -94,7 +94,8 @@ else
   sudo env PATH="$PATH" wg-quick up "$PWD/$WG_CONF"
 fi
 if [[ "$OS" == "Darwin" ]]; then
-  UTUN="$(cat "$WG_NAME_FILE")"
+  # newer wireguard-tools create the .name file root-only, so read it with sudo
+  UTUN="$(sudo cat "$WG_NAME_FILE")"
 else
   UTUN="$WG_CONF_NAME"
 fi
