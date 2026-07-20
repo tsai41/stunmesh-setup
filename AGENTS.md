@@ -16,6 +16,18 @@ Wrapper scripts building a WireGuard P2P tunnel between exactly two machines (no
 - `Makefile` — thin launcher: `setup NODE=A PEER_KEY=…`, `start`, `stop`, `status`, `logs`, `next`
 - Runtime files (all under `state/`, gitignored as a directory): `settings.env` (metadata, not secret), `wg.key` + `stunmesh0.conf` (SECRETS), `config.yaml`, `stunmesh.log`, `stunmesh.pid`, `stunmesh-go` binary
 
+## Two-machine order
+
+Setup spans two machines; each one only needs the OTHER's public key before its own `make start`. The canonical sequence:
+
+1. Node A: `make setup NODE=A` → prints A's public key; no peer key yet, press Enter
+2. Send A's key to node B (public keys are not secret)
+3. Node B: `make setup NODE=B` → paste A's key; B prints its own key → send back to A. B can `make start` already — no need to wait for A
+4. Node A: `make setup NODE=A` again → paste B's key → `make start`
+5. Verify from either side: `ping 10.66.0.2` (A) / `ping 10.66.0.1` (B); punching takes ~1-2 min after both are up
+
+When unsure which step a machine is on, run `make next` — it inspects local state and prints the exact next command, including what to run on the other machine.
+
 ## Invariants — do not break
 
 - Key direction: `--peer-key` is always the OTHER machine's public key; setup.sh rejects the machine's own key. Keep that guard.
