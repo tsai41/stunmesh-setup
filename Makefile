@@ -1,6 +1,6 @@
 # Thin launcher over the scripts. Examples:
 #   make setup NODE=A
-#   make setup NODE=B PEER_KEY=<key>
+#   make setup NODE=B PEER_KEY=<the key node A printed>
 #   make start / stop / status / logs
 
 .PHONY: setup start stop status logs next ssh ssh-setup ssh-teardown check test

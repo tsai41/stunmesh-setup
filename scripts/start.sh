@@ -9,7 +9,10 @@ _load_settings
 [[ -x "$STATE/stunmesh-go" ]] || { echo "✗ stunmesh-go missing or not executable; run make setup" >&2; exit 1; }
 # a hand-edited config.yaml carries its own peer key; only generation needs settings.env's
 if [[ ! -f "$STATE/config.yaml" && -z "${PEER_KEY:-}" ]]; then
-  echo "✗ Peer public key missing; run make setup NODE=$NODE PEER_KEY=<KEY> (or hand-edit $STATE/config.yaml)" >&2
+  echo "✗ Peer public key missing. This is node $NODE, so it needs node $(_other_node)'s public key —" >&2
+  echo "  the one printed by 'make setup' on the other machine, not the key printed here." >&2
+  echo "  Run: make setup NODE=$NODE     (it will ask you to paste that key)" >&2
+  echo "  Not there yet? 'make next' prints how to get it." >&2
   exit 1
 fi
 docker info >/dev/null 2>&1 || { echo "✗ Docker daemon not running; start Docker Desktop / colima / systemctl start docker" >&2; exit 1; }

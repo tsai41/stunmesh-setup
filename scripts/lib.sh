@@ -37,6 +37,9 @@ _init_settings() {
   done
 }
 
+# the peer key is always the OTHER node's; messages name it rather than say "the key"
+_other_node() { [[ "${NODE:-}" == "A" ]] && echo B || echo A; }
+
 _is_setting() {
   local candidate
   for candidate in "${SETTINGS_VARS[@]}"; do

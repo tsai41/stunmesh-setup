@@ -20,14 +20,14 @@ if [[ -z "${PEER_KEY:-}" ]]; then
     echo "     $PUB_KEY"
     echo "2. On the other machine: make setup NODE=$([[ "$NODE" == "A" ]] && echo B || echo A) PEER_KEY=$PUB_KEY"
     echo "3. It prints ITS key; bring that back here and run:"
-    echo "     make setup NODE=$NODE PEER_KEY=<KEY_FROM_OTHER_MACHINE>"
+    echo "     make setup NODE=$NODE PEER_KEY=<the key node $(_other_node) printed>"
   fi
   exit 0
 fi
 
 if [[ -n "$PUB_KEY" && "$PEER_KEY" == "$PUB_KEY" ]]; then
   echo "✗ settings.env holds this machine's OWN key (a previous mix-up)."
-  echo "  Re-run: make setup NODE=$NODE PEER_KEY=<KEY_FROM_OTHER_MACHINE>"
+  echo "  Re-run: make setup NODE=$NODE PEER_KEY=<the key node $(_other_node) printed>"
   exit 1
 fi
 
@@ -35,7 +35,7 @@ PROBLEMS="$(_config_problems)"
 if [[ -n "$PROBLEMS" ]]; then
   echo "✗ Config file issues detected:"
   sed 's/^/  - /' <<< "$PROBLEMS"
-  echo "  Fix: re-run make setup NODE=$NODE PEER_KEY=<KEY> (regenerates and syncs), or edit the file. Then: make next"
+  echo "  Fix: re-run make setup NODE=$NODE and paste node $(_other_node)'s public key when asked"
   exit 1
 fi
 

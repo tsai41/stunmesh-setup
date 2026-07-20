@@ -31,7 +31,7 @@ The OpenDHT container is pinned to the official `v4.1.1` multi-architecture imag
 
 Clone anywhere (a path without spaces, outside cloud-synced folders — `wg.key` is a secret and logs churn). Everything stays inside the repo folder.
 
-Setup is interactive: it prints **this machine's key to send away**, then **asks** you to paste the other machine's key — just press Enter if you don't have it yet and run setup again later. You never need to remember when to pass which key; the wrong one is rejected. (`PEER_KEY=<KEY>` still works for non-interactive use. Lost? `make next` always prints the next step.)
+Setup is interactive: it prints **this machine's key to send away**, then **asks** you to paste the other machine's key — just press Enter if you don't have it yet and run setup again later. You never need to remember when to pass which key; the wrong one is rejected. `PEER_KEY=` is always the *other* machine's public key — on node A you pass B's, on node B you pass A's — and it still works non-interactively. Lost? `make next` always prints the next step.
 
 1. On node A: `make setup NODE=A` → send the printed key to B, press Enter at the prompt (no key from B yet)
 2. On node B: `make setup NODE=B` → paste A's key at the prompt; send B's printed key back to A

@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # setup.sh — one-time install & configuration (run once per machine, macOS/Linux)
-# Usage: make setup NODE=A|B [PEER_KEY=<KEY>] [IP=<self>] [PEER_IP=<peer>] [USER=<peer ssh user>]
+# Usage: make setup NODE=A|B [PEER_KEY=<OTHER machine's public key>] [IP=<self>] [PEER_IP=<peer>] [USER=<peer ssh user>]
 # Re-run anytime; asks for the peer key and peer SSH user. Default IPs: A=10.66.0.1, B=10.66.0.2.
 set -euo pipefail
 cd "$(dirname "$0")/.."
@@ -40,7 +40,7 @@ _load_settings
 
 NODE="$(echo "$NODE" | tr '[:lower:]' '[:upper:]')"
 if [[ "$NODE" != "A" && "$NODE" != "B" ]]; then
-  echo "usage: make setup NODE=A|B [PEER_KEY=<peer public key>] [IP=<self>] [PEER_IP=<peer>] [USER=<peer ssh user>]" >&2
+  echo "usage: make setup NODE=A|B [PEER_KEY=<OTHER machine's public key>] [IP=<self>] [PEER_IP=<peer>] [USER=<peer ssh user>]" >&2
   echo "  use NODE=A on one machine and NODE=B on the other (decides tunnel IP)" >&2
   exit 1
 fi
