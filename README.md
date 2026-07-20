@@ -51,6 +51,14 @@ make stop
 
 `make start` verifies that stunmesh-go stays alive before reporting success. If a later startup stage fails, it rolls back only the DHT/WireGuard components started by that invocation. `make stop` attempts every cleanup stage even if one fails.
 
+If you previously followed a manual setup that used `docker run --name dhtnode`, `make start` will refuse to delete that container automatically. Inspect it first, and remove it only after confirming it is the old tutorial container:
+
+```bash
+docker inspect dhtnode
+docker rm -f dhtnode      # only after confirming it is safe to remove
+make start
+```
+
 Other targets: `make status` (DHT health + WireGuard + project pidfile), `make logs`, `make next`. (The scripts live in [`scripts/`](scripts/) and can also be run directly, e.g. `./scripts/setup.sh --node A`.)
 
 ## SSH over the tunnel
