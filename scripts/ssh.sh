@@ -26,8 +26,7 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
-NODE=""; SELF_IP=""; PEER_IP=""; PEER_KEY=""; PEER_SSH_USER=""
-[[ -f "$STATE/settings.env" ]] && . "./$STATE/settings.env"
+_load_settings
 
 _require_peer_ip() {
   if [[ -z "$PEER_IP" ]]; then
@@ -36,7 +35,8 @@ _require_peer_ip() {
   fi
 }
 
-# settings.env gets sourced by every script; keep shell metacharacters out
+# the name lands in state/ssh.conf, which ssh Includes: whitespace would let it
+# smuggle in another config directive
 _valid_name() { [[ "$1" =~ ^[A-Za-z0-9._-]+$ ]]; }
 
 _refuse_symlink() {

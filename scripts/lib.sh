@@ -17,16 +17,71 @@ _valid_ipv4() {
   done
 }
 
+# settings.env schema — a new setting is added here and nowhere else
+SETTINGS_VARS=(NODE SELF_IP PEER_IP PEER_KEY PEER_SSH_USER)
+
+# clear every setting: an exported PEER_IP must never stand in for a missing
+# settings.env, and `make ssh PEER_IP=...` does put one in the recipe environment
+_reset_settings() {
+  local var
+  for var in "${SETTINGS_VARS[@]}"; do
+    eval "$var="
+  done
+}
+
+# default any setting the caller never assigned, so `set -u` cannot trip
+_init_settings() {
+  local var
+  for var in "${SETTINGS_VARS[@]}"; do
+    eval ": \${$var:=}"
+  done
+}
+
+_is_setting() {
+  local candidate
+  for candidate in "${SETTINGS_VARS[@]}"; do
+    [[ "$candidate" == "$1" ]] && return 0
+  done
+  return 1
+}
+
+# settings.env is parsed, never sourced: sourcing runs whatever the file holds,
+# and a subshell does not contain that — it can redefine printf, exit early to
+# fake an empty config, or eat the stdin setup is prompting on.
+_load_settings() {
+  local line key
+  _reset_settings
+  [[ -f "$STATE/settings.env" ]] || return 0
+  # an unreadable file must not read as "no settings": setup would take that for
+  # a fresh machine and write defaults straight over it
+  [[ -r "$STATE/settings.env" ]] || { echo "✗ Cannot read $STATE/settings.env" >&2; return 1; }
+  while IFS= read -r line || [[ -n "$line" ]]; do
+    line="${line%$'\r'}"  # a CRLF file would leave a CR on the end of every value
+    # indentation and `export` are tolerated because this file used to be sourced
+    # and still looks like a shell script; the value keeps every later '=', which
+    # WireGuard keys end in
+    [[ "$line" =~ ^[[:space:]]*(export[[:space:]]+)?([A-Za-z_][A-Za-z0-9_]*)=(.*)$ ]] || continue
+    key="${BASH_REMATCH[2]}"
+    if _is_setting "$key"; then
+      printf -v "$key" '%s' "${BASH_REMATCH[3]}"
+    fi
+  done < "$STATE/settings.env"
+  return 0
+}
+
 _save_settings() {
-  local tmp
+  local tmp var out=""
+  _init_settings  # callers normally _load_settings first; this only keeps `set -u` quiet
   mkdir -p "$STATE"
+  for var in "${SETTINGS_VARS[@]}"; do
+    # a newline would split into a line the reader reads back as another setting
+    case "${!var}" in
+      *$'\n'*) echo "✗ $var contains a newline and cannot be saved" >&2; return 1 ;;
+    esac
+    out="$out$var=${!var}"$'\n'
+  done
   tmp="$(mktemp "$STATE/.settings.env.XXXXXX")"
-  if ! printf '%s\n' \
-    "NODE=$NODE" \
-    "SELF_IP=$SELF_IP" \
-    "PEER_IP=$PEER_IP" \
-    "PEER_KEY=$PEER_KEY" \
-    "PEER_SSH_USER=$PEER_SSH_USER" > "$tmp"; then
+  if ! printf '%s' "$out" > "$tmp"; then
     rm -f "$tmp"
     return 1
   fi
@@ -42,6 +97,21 @@ _wg_running() {
   fi
 }
 
+# the peer-key checks both config files need; <file> <field name> <key> <own pubkey>
+_peer_key_problems() {
+  local file="$1" field="$2" key="$3" pub="$4"
+  case "$key" in
+    '') return 0 ;;
+    *'<'*) echo "$file: $field is still a placeholder"; return 0 ;;
+  esac
+  if [[ -n "$pub" && "$key" == "$pub" ]]; then
+    echo "$file: $field is this machine's OWN key (must be the other machine's)"
+  fi
+  if [[ -n "${PEER_KEY:-}" && "$key" != "$PEER_KEY" ]]; then
+    echo "$file: $field differs from settings.env PEER_KEY"
+  fi
+}
+
 # inspect real config files; print one problem per line (empty = clean)
 _config_problems() {
   local pub="" peer="" priv="" yaml_peer="" target=""
@@ -51,13 +121,7 @@ _config_problems() {
     # sed, not awk with '=' as FS: WireGuard keys themselves end in '='
     peer="$(sed -nE 's/^PublicKey *= *//p' "$WG_CONF" | head -1)"
     priv="$(sed -nE 's/^PrivateKey *= *//p' "$WG_CONF" | head -1)"
-    case "$peer" in *'<'*) echo "$WG_CONF: PublicKey is still a placeholder" ;; esac
-    if [[ -n "$pub" && "$peer" == "$pub" ]]; then
-      echo "$WG_CONF: PublicKey is this machine's OWN key (must be the other machine's)"
-    fi
-    if [[ -n "${PEER_KEY:-}" && -n "$peer" && "$peer" != *'<'* && "$peer" != "$PEER_KEY" ]]; then
-      echo "$WG_CONF: PublicKey differs from settings.env PEER_KEY"
-    fi
+    _peer_key_problems "$WG_CONF" PublicKey "$peer" "$pub"
     if [[ -n "$priv" && "$priv" != *'<'* && -n "$pub" ]]; then
       if [[ "$(printf '%s' "$priv" | wg pubkey 2>/dev/null)" != "$pub" ]]; then
         echo "$WG_CONF: PrivateKey does not match wg.key"
@@ -70,13 +134,7 @@ _config_problems() {
   if [[ -f "$STATE/config.yaml" ]]; then
     yaml_peer="$(sed -nE 's/^ *public_key: "([^"]*)".*/\1/p' "$STATE/config.yaml" | head -1)"
     target="$(sed -nE 's/^ *target: "([^"]*)".*/\1/p' "$STATE/config.yaml" | head -1)"
-    case "$yaml_peer" in *'<'*) echo "$STATE/config.yaml: public_key is still a placeholder" ;; esac
-    if [[ -n "$pub" && "$yaml_peer" == "$pub" ]]; then
-      echo "$STATE/config.yaml: public_key is this machine's OWN key (must be the other machine's)"
-    fi
-    if [[ -n "${PEER_KEY:-}" && -n "$yaml_peer" && "$yaml_peer" != *'<'* && "$yaml_peer" != "$PEER_KEY" ]]; then
-      echo "$STATE/config.yaml: public_key differs from settings.env PEER_KEY"
-    fi
+    _peer_key_problems "$STATE/config.yaml" public_key "$yaml_peer" "$pub"
     if [[ -n "$target" && -n "${PEER_IP:-}" && "$target" != "$PEER_IP" ]]; then
       echo "$STATE/config.yaml: ping target is $target but peer IP is $PEER_IP"
     fi

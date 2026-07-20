@@ -8,7 +8,7 @@ if [[ ! -f "$STATE/settings.env" ]]; then
   echo "Next: make setup NODE=A     (use NODE=B on the other machine)"
   exit 0
 fi
-. "./$STATE/settings.env"
+_load_settings
 
 PUB_KEY=""
 [[ -f "$STATE/wg.key" ]] && PUB_KEY="$(wg pubkey < "$STATE/wg.key" 2>/dev/null || true)"

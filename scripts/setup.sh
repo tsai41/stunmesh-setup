@@ -14,30 +14,29 @@ for f in wg.key settings.env stunmesh0.conf config.yaml stunmesh.log stunmesh.pi
   [[ -e "$f" && ! -e "$STATE/$f" ]] && mv "$f" "$STATE/$f"
 done
 
-NODE=""
-PEER_KEY=""
-SELF_IP=""
-PEER_IP=""
-PEER_SSH_USER=""
+ARG_NODE=""
+ARG_PEER_KEY=""
+ARG_SELF_IP=""
+ARG_PEER_IP=""
+ARG_PEER_SSH_USER=""
 while [[ $# -gt 0 ]]; do
   case "$1" in
-    --node) NODE="$2"; shift 2 ;;
-    --peer-key) PEER_KEY="$2"; shift 2 ;;
-    --ip) SELF_IP="$2"; shift 2 ;;
-    --peer-ip) PEER_IP="$2"; shift 2 ;;
-    --peer-ssh-user) PEER_SSH_USER="$2"; shift 2 ;;
+    --node) ARG_NODE="$2"; shift 2 ;;
+    --peer-key) ARG_PEER_KEY="$2"; shift 2 ;;
+    --ip) ARG_SELF_IP="$2"; shift 2 ;;
+    --peer-ip) ARG_PEER_IP="$2"; shift 2 ;;
+    --peer-ssh-user) ARG_PEER_SSH_USER="$2"; shift 2 ;;
     *) echo "unknown argument: $1" >&2; exit 1 ;;
   esac
 done
 
-# re-runs reuse previous settings.env values
-if [[ -f "$STATE/settings.env" ]]; then
-  [[ -z "$PEER_KEY" ]] && PEER_KEY="$(. "./$STATE/settings.env" && echo "${PEER_KEY:-}")"
-  [[ -z "$NODE" ]]     && NODE="$(. "./$STATE/settings.env" && echo "${NODE:-}")"
-  [[ -z "$SELF_IP" ]]  && SELF_IP="$(. "./$STATE/settings.env" && echo "${SELF_IP:-}")"
-  [[ -z "$PEER_IP" ]]  && PEER_IP="$(. "./$STATE/settings.env" && echo "${PEER_IP:-}")"
-  [[ -z "$PEER_SSH_USER" ]] && PEER_SSH_USER="$(. "./$STATE/settings.env" && echo "${PEER_SSH_USER:-}")"
-fi
+# re-runs start from the saved settings; anything passed on the command line wins
+_load_settings
+[[ -n "$ARG_NODE" ]] && NODE="$ARG_NODE"
+[[ -n "$ARG_PEER_KEY" ]] && PEER_KEY="$ARG_PEER_KEY"
+[[ -n "$ARG_SELF_IP" ]] && SELF_IP="$ARG_SELF_IP"
+[[ -n "$ARG_PEER_IP" ]] && PEER_IP="$ARG_PEER_IP"
+[[ -n "$ARG_PEER_SSH_USER" ]] && PEER_SSH_USER="$ARG_PEER_SSH_USER"
 
 NODE="$(echo "$NODE" | tr '[:lower:]' '[:upper:]')"
 if [[ "$NODE" != "A" && "$NODE" != "B" ]]; then
@@ -46,7 +45,7 @@ if [[ "$NODE" != "A" && "$NODE" != "B" ]]; then
   exit 1
 fi
 
-# strict format also keeps shell metacharacters out of settings.env, which gets sourced
+# the key is copied verbatim into stunmesh0.conf and config.yaml
 if [[ -n "$PEER_KEY" && ! "$PEER_KEY" =~ ^[A-Za-z0-9+/]{43}=$ ]]; then
   echo "✗ Invalid peer key: expected a 44-character base64 WireGuard public key" >&2
   exit 1

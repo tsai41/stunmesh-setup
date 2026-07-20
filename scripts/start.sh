@@ -5,7 +5,7 @@ cd "$(dirname "$0")/.."
 . ./scripts/lib.sh
 
 [[ -f "$STATE/settings.env" ]] || { echo "✗ Run make setup first" >&2; exit 1; }
-. "./$STATE/settings.env"
+_load_settings
 [[ -x "$STATE/stunmesh-go" ]] || { echo "✗ stunmesh-go missing or not executable; run make setup" >&2; exit 1; }
 # a hand-edited config.yaml carries its own peer key; only generation needs settings.env's
 if [[ ! -f "$STATE/config.yaml" && -z "${PEER_KEY:-}" ]]; then
