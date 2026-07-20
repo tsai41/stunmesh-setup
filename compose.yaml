@@ -1,6 +1,6 @@
 services:
   dhtnode:
-    image: ghcr.io/savoirfairelinux/opendht/opendht
+    image: ghcr.io/savoirfairelinux/opendht/opendht:v4.1.1@sha256:2da0cbb53c6024c357b9e85c4d86192cf950695f4d4db9f9c02ba8604a8801ff
     container_name: dhtnode
     # dhtnode exits immediately without an open stdin (interactive command loop)
     stdin_open: true

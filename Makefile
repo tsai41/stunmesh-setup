@@ -3,13 +3,13 @@
 #   make setup NODE=B PEER_KEY=<key>
 #   make start / stop / status / logs
 
-.PHONY: setup start stop status logs next
+.PHONY: setup start stop status logs next ssh ssh-setup ssh-teardown check test
 
 next:
 	@./scripts/next.sh
 
 setup:
-	./scripts/setup.sh $(if $(NODE),--node "$(NODE)") $(if $(PEER_KEY),--peer-key "$(PEER_KEY)") $(if $(IP),--ip "$(IP)") $(if $(PEER_IP),--peer-ip "$(PEER_IP)")
+	./scripts/setup.sh $(if $(NODE),--node "$(NODE)") $(if $(PEER_KEY),--peer-key "$(PEER_KEY)") $(if $(IP),--ip "$(IP)") $(if $(PEER_IP),--peer-ip "$(PEER_IP)") $(if $(filter command line,$(origin USER)),--peer-ssh-user "$(USER)")
 
 start:
 	./scripts/start.sh
@@ -18,9 +18,26 @@ stop:
 	./scripts/stop.sh
 
 status:
-	@docker ps --filter name=dhtnode --format 'dhtnode:     {{.Status}}' | grep . || echo 'dhtnode:     not running'
-	@curl -sS --max-time 2 http://127.0.0.1:8080/node/info 2>/dev/null | jq -r '"dht good:    \(.ipv4.good // 0)"' 2>/dev/null || true
-	@pgrep -f stunmesh-go >/dev/null && echo 'stunmesh-go: running' || echo 'stunmesh-go: not running'
+	@./scripts/status.sh
 
 logs:
 	tail -f state/stunmesh.log
+
+# USER comes from the environment for every make run; only honor it when set on the command line
+ssh:
+	@./scripts/ssh.sh connect $(if $(filter command line,$(origin USER)),--user "$(USER)")
+
+ssh-setup:
+	@./scripts/ssh.sh setup $(if $(HOST),--host "$(HOST)") $(if $(filter command line,$(origin USER)),--user "$(USER)")
+
+ssh-teardown:
+	@./scripts/ssh.sh teardown
+
+check:
+	bash -n scripts/*.sh tests/*.sh
+	shellcheck -e SC1090,SC2001 scripts/*.sh tests/*.sh
+	docker compose config >/dev/null
+	git diff --check
+
+test:
+	@./tests/run.sh

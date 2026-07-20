@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # setup.sh — one-time install & configuration (run once per machine, macOS/Linux)
-# Usage: make setup NODE=A|B [PEER_KEY=<KEY>] [IP=<self>] [PEER_IP=<peer>]
-# Re-run anytime; asks for the peer key. Default IPs: A=10.66.0.1, B=10.66.0.2.
+# Usage: make setup NODE=A|B [PEER_KEY=<KEY>] [IP=<self>] [PEER_IP=<peer>] [USER=<peer ssh user>]
+# Re-run anytime; asks for the peer key and peer SSH user. Default IPs: A=10.66.0.1, B=10.66.0.2.
 set -euo pipefail
 cd "$(dirname "$0")/.."
 . ./scripts/lib.sh
@@ -18,12 +18,14 @@ NODE=""
 PEER_KEY=""
 SELF_IP=""
 PEER_IP=""
+PEER_SSH_USER=""
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --node) NODE="$2"; shift 2 ;;
     --peer-key) PEER_KEY="$2"; shift 2 ;;
     --ip) SELF_IP="$2"; shift 2 ;;
     --peer-ip) PEER_IP="$2"; shift 2 ;;
+    --peer-ssh-user) PEER_SSH_USER="$2"; shift 2 ;;
     *) echo "unknown argument: $1" >&2; exit 1 ;;
   esac
 done
@@ -34,11 +36,12 @@ if [[ -f "$STATE/settings.env" ]]; then
   [[ -z "$NODE" ]]     && NODE="$(. "./$STATE/settings.env" && echo "${NODE:-}")"
   [[ -z "$SELF_IP" ]]  && SELF_IP="$(. "./$STATE/settings.env" && echo "${SELF_IP:-}")"
   [[ -z "$PEER_IP" ]]  && PEER_IP="$(. "./$STATE/settings.env" && echo "${PEER_IP:-}")"
+  [[ -z "$PEER_SSH_USER" ]] && PEER_SSH_USER="$(. "./$STATE/settings.env" && echo "${PEER_SSH_USER:-}")"
 fi
 
 NODE="$(echo "$NODE" | tr '[:lower:]' '[:upper:]')"
 if [[ "$NODE" != "A" && "$NODE" != "B" ]]; then
-  echo "usage: make setup NODE=A|B [PEER_KEY=<peer public key>] [IP=<self>] [PEER_IP=<peer>]" >&2
+  echo "usage: make setup NODE=A|B [PEER_KEY=<peer public key>] [IP=<self>] [PEER_IP=<peer>] [USER=<peer ssh user>]" >&2
   echo "  use NODE=A on one machine and NODE=B on the other (decides tunnel IP)" >&2
   exit 1
 fi
@@ -46,6 +49,10 @@ fi
 # strict format also keeps shell metacharacters out of settings.env, which gets sourced
 if [[ -n "$PEER_KEY" && ! "$PEER_KEY" =~ ^[A-Za-z0-9+/]{43}=$ ]]; then
   echo "✗ Invalid peer key: expected a 44-character base64 WireGuard public key" >&2
+  exit 1
+fi
+if [[ -n "$PEER_SSH_USER" && ! "$PEER_SSH_USER" =~ ^[A-Za-z0-9._-]+$ ]]; then
+  echo "✗ Invalid peer SSH user: $PEER_SSH_USER" >&2
   exit 1
 fi
 
@@ -56,7 +63,7 @@ if [[ -z "$PEER_IP" ]]; then
   [[ "$NODE" == "A" ]] && PEER_IP="10.66.0.2" || PEER_IP="10.66.0.1"
 fi
 for ip in "$SELF_IP" "$PEER_IP"; do
-  if [[ ! "$ip" =~ ^([0-9]{1,3}\.){3}[0-9]{1,3}$ ]]; then
+  if ! _valid_ipv4 "$ip"; then
     echo "✗ Invalid IPv4 address: $ip" >&2
     exit 1
   fi
@@ -88,6 +95,7 @@ case "$OS" in
     _need wg           "brew install wireguard-tools"
     _need wg-quick     "brew install wireguard-tools"
     _need jq           "brew install jq"
+    _need shasum       "included with macOS; reinstall the system developer tools if missing"
     ;;
   Linux)
     # kernel >= 5.6 ships WireGuard built in; only userspace tools needed
@@ -95,6 +103,7 @@ case "$OS" in
     _need wg-quick "sudo apt-get install wireguard-tools (or dnf/pacman equivalent)"
     _need jq       "sudo apt-get install jq (or dnf/pacman equivalent)"
     _need curl     "sudo apt-get install curl (or dnf/pacman equivalent)"
+    _need sha256sum "sudo apt-get install coreutils (or your distro's equivalent)"
     # warn only: version compare would false-negative on distros that backport WireGuard
     if command -v modinfo >/dev/null && ! modinfo wireguard >/dev/null 2>&1; then
       echo "⚠ WireGuard kernel module not detected (kernel >= 5.6 has it built in);" >&2
@@ -131,17 +140,53 @@ case "$OS" in
   Darwin) OSKEY="darwin" ;;
   Linux)  OSKEY="linux" ;;
 esac
-case "$(uname -m)" in
-  arm64|aarch64) BIN="stunmesh-${OSKEY}-arm64-${STUNMESH_VERSION}" ;;
-  x86_64)        BIN="stunmesh-${OSKEY}-amd64-${STUNMESH_VERSION}" ;;
+case "$OS/$(uname -m)" in
+  Darwin/arm64)
+    BIN="stunmesh-${OSKEY}-arm64-${STUNMESH_VERSION}"
+    EXPECTED_SHA256="8b6d12226db02f8c1c38e5040f4dfb2c726d440596e78d0f34e5bcbbba799f3f"
+    ;;
+  Darwin/x86_64)
+    BIN="stunmesh-${OSKEY}-amd64-${STUNMESH_VERSION}"
+    EXPECTED_SHA256="8994a430baed23020a755a9997c40323225a43d3fe6c6f930954005311491597"
+    ;;
+  Linux/arm64|Linux/aarch64)
+    BIN="stunmesh-${OSKEY}-arm64-${STUNMESH_VERSION}"
+    EXPECTED_SHA256="262b25293735490a903f99ef7511a954e26ae346cb809cb7bdc7e7ebf8a32c77"
+    ;;
+  Linux/x86_64)
+    BIN="stunmesh-${OSKEY}-amd64-${STUNMESH_VERSION}"
+    EXPECTED_SHA256="2914c919202a0e8cf61049a60a4600dfb51fe77a0d6489c32ffa4913336d956e"
+    ;;
   *) echo "✗ Unsupported arch: $(uname -m)" >&2; exit 1 ;;
 esac
-if [[ -x "$STATE/stunmesh-go" ]]; then
+
+_sha256() {
+  if [[ "$OS" == "Darwin" ]]; then
+    shasum -a 256 "$1" | awk '{print $1}'
+  else
+    sha256sum "$1" | awk '{print $1}'
+  fi
+}
+
+if [[ -f "$STATE/stunmesh-go" ]] && [[ "$(_sha256 "$STATE/stunmesh-go")" == "$EXPECTED_SHA256" ]]; then
+  chmod +x "$STATE/stunmesh-go"
   echo "    already present, skipping"
 else
-  curl -fSL --progress-bar -o "$STATE/stunmesh-go" \
-    "https://github.com/tjjh89017/stunmesh-go/releases/download/${STUNMESH_VERSION}/${BIN}"
-  chmod +x "$STATE/stunmesh-go"
+  [[ ! -e "$STATE/stunmesh-go" ]] || echo "    existing binary failed checksum; downloading a clean copy"
+  DOWNLOAD_TMP="$(mktemp "$STATE/.stunmesh-go.XXXXXX")"
+  if ! curl -fSL --progress-bar -o "$DOWNLOAD_TMP" \
+    "https://github.com/tjjh89017/stunmesh-go/releases/download/${STUNMESH_VERSION}/${BIN}"; then
+    rm -f "$DOWNLOAD_TMP"
+    exit 1
+  fi
+  ACTUAL_SHA256="$(_sha256 "$DOWNLOAD_TMP")"
+  if [[ "$ACTUAL_SHA256" != "$EXPECTED_SHA256" ]]; then
+    rm -f "$DOWNLOAD_TMP"
+    echo "✗ stunmesh-go checksum mismatch: expected $EXPECTED_SHA256, got $ACTUAL_SHA256" >&2
+    exit 1
+  fi
+  chmod +x "$DOWNLOAD_TMP"
+  mv "$DOWNLOAD_TMP" "$STATE/stunmesh-go"
 fi
 
 echo "==> Pulling OpenDHT image"
@@ -183,12 +228,19 @@ if [[ -z "$PEER_KEY" && -t 0 ]]; then
   done
 fi
 
-cat > "$STATE/settings.env" <<EOF
-NODE=$NODE
-SELF_IP=$SELF_IP
-PEER_IP=$PEER_IP
-PEER_KEY=$PEER_KEY
-EOF
+if [[ -z "$PEER_SSH_USER" && -t 0 ]]; then
+  DEFAULT_SSH_USER="$(id -un)"
+  while :; do
+    read -r -p "Other machine's SSH user (Enter = same as this machine): " ANSWER
+    PEER_SSH_USER="${ANSWER:-$DEFAULT_SSH_USER}"
+    if [[ "$PEER_SSH_USER" =~ ^[A-Za-z0-9._-]+$ ]]; then
+      break
+    fi
+    echo "  ✗ invalid user name (use letters, numbers, '.', '_' or '-')"
+  done
+fi
+
+_save_settings
 
 if [[ -z "$PEER_KEY" ]]; then
   echo

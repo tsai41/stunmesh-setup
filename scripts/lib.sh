@@ -7,6 +7,32 @@ WG_CONF="$STATE/${WG_CONF_NAME}.conf"
 OS="$(uname -s)"
 WG_NAME_FILE="/var/run/wireguard/${WG_CONF_NAME}.name"
 
+_valid_ipv4() {
+  local ip="$1" octet
+  local -a octets
+  [[ "$ip" =~ ^([0-9]{1,3}\.){3}[0-9]{1,3}$ ]] || return 1
+  IFS=. read -r -a octets <<< "$ip"
+  for octet in "${octets[@]}"; do
+    (( 10#$octet <= 255 )) || return 1
+  done
+}
+
+_save_settings() {
+  local tmp
+  mkdir -p "$STATE"
+  tmp="$(mktemp "$STATE/.settings.env.XXXXXX")"
+  if ! printf '%s\n' \
+    "NODE=$NODE" \
+    "SELF_IP=$SELF_IP" \
+    "PEER_IP=$PEER_IP" \
+    "PEER_KEY=$PEER_KEY" \
+    "PEER_SSH_USER=$PEER_SSH_USER" > "$tmp"; then
+    rm -f "$tmp"
+    return 1
+  fi
+  mv "$tmp" "$STATE/settings.env"
+}
+
 # macOS: dynamic utunX recorded in the name file; Linux: interface keeps the conf name
 _wg_running() {
   if [[ "$OS" == "Darwin" ]]; then

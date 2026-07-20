@@ -6,6 +6,7 @@ cd "$(dirname "$0")/.."
 
 [[ -f "$STATE/settings.env" ]] || { echo "✗ Run make setup first" >&2; exit 1; }
 . "./$STATE/settings.env"
+[[ -x "$STATE/stunmesh-go" ]] || { echo "✗ stunmesh-go missing or not executable; run make setup" >&2; exit 1; }
 # a hand-edited config.yaml carries its own peer key; only generation needs settings.env's
 if [[ ! -f "$STATE/config.yaml" && -z "${PEER_KEY:-}" ]]; then
   echo "✗ Peer public key missing; run make setup NODE=$NODE PEER_KEY=<KEY> (or hand-edit $STATE/config.yaml)" >&2
@@ -23,14 +24,46 @@ if [[ -n "$PROBLEMS" ]]; then
   exit 1
 fi
 
+DHT_STARTED=0
+WG_STARTED=0
+STUN_STARTED=0
+START_COMPLETE=0
+
+_rollback_start() {
+  local status=$?
+  (( START_COMPLETE )) && return "$status"
+  set +e
+  echo "==> Start failed; rolling back components started by this run" >&2
+  if (( STUN_STARTED )); then
+    if PID="$(_stunmesh_pid)"; then
+      sudo kill "$PID" >/dev/null 2>&1
+    fi
+    rm -f "$STATE/stunmesh.pid"
+  fi
+  if (( WG_STARTED )); then
+    sudo env PATH="$PATH" wg-quick down "$PWD/$WG_CONF" >/dev/null 2>&1
+  fi
+  if (( DHT_STARTED )); then
+    docker compose stop >/dev/null 2>&1
+  fi
+  return "$status"
+}
+trap _rollback_start EXIT
+
 echo "==> OpenDHT proxy (docker compose)"
 # compose.yaml pins container_name; a dhtnode from docker run or another compose project collides
 if docker ps -a --format '{{.Names}}' | grep -qx dhtnode; then
   PROJECT="$(basename "$PWD" | tr '[:upper:]' '[:lower:]' | sed 's/[^a-z0-9_-]//g')"
   LABEL="$(docker inspect -f '{{index .Config.Labels "com.docker.compose.project"}}' dhtnode 2>/dev/null || true)"
   if [[ "$LABEL" != "$PROJECT" ]]; then
-    docker rm -f dhtnode >/dev/null
+    echo "✗ Container 'dhtnode' belongs to another Docker project (${LABEL:-unmanaged})." >&2
+    echo "  Inspect it first: docker inspect dhtnode" >&2
+    echo "  If it is the old tutorial container and safe to remove: docker rm -f dhtnode" >&2
+    exit 1
   fi
+fi
+if ! docker ps --format '{{.Names}}' | grep -qx dhtnode; then
+  DHT_STARTED=1
 fi
 docker compose up -d
 
@@ -54,6 +87,7 @@ if _wg_running; then
   echo "    already up, skipping"
 else
   # keep PATH under sudo so wg-quick can find brew-installed wireguard-go
+  WG_STARTED=1
   sudo env PATH="$PATH" wg-quick up "$PWD/$WG_CONF"
 fi
 if [[ "$OS" == "Darwin" ]]; then
@@ -107,10 +141,24 @@ if PID="$(_stunmesh_pid)"; then
   echo "    already running (pid $PID), skipping"
 else
   # stunmesh-go reads config.yaml from cwd, so run inside state/
-  sudo bash -c "cd '$PWD/$STATE' && nohup ./stunmesh-go >> stunmesh.log 2>&1 & echo \$! > stunmesh.pid"
-  echo "    started (pid $(cat "$STATE/stunmesh.pid")), log: $STATE/stunmesh.log"
+  sudo bash -c 'cd "$1" || exit 1; nohup ./stunmesh-go >> stunmesh.log 2>&1 & echo $! > stunmesh.pid' bash "$PWD/$STATE"
+  STUN_STARTED=1
+  PID=""
+  for _ in {1..10}; do
+    if PID="$(_stunmesh_pid)"; then
+      break
+    fi
+    sleep 0.2
+  done
+  if [[ -z "$PID" ]]; then
+    echo "✗ stunmesh-go exited during startup. Last log lines:" >&2
+    tail -n 20 "$STATE/stunmesh.log" >&2 2>/dev/null || true
+    exit 1
+  fi
+  echo "    started (pid $PID), log: $STATE/stunmesh.log"
 fi
 
+START_COMPLETE=1
 echo
 echo "✓ All started. Once both machines are up, the tunnel forms in ~1-2 min. Verify:"
 echo "  ping $PEER_IP"
