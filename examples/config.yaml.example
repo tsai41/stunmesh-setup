@@ -18,6 +18,7 @@ interfaces:
           target: "10.66.0.2"
           interval: "30s"
           timeout: "5s"
+    listen_default_route: true
 stun:
   addresses:
     - "stun.l.google.com:19302"
