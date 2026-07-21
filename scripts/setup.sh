@@ -229,6 +229,9 @@ fi
 
 if [[ -z "$PEER_SSH_USER" && -t 0 ]]; then
   DEFAULT_SSH_USER="$(id -un)"
+  echo "════════════════════════════════════════════════════"
+  echo " ⏸  Waiting for input — needs the OTHER machine's SSH user"
+  echo "════════════════════════════════════════════════════"
   while :; do
     read -r -p "Other machine's SSH user (Enter = same as this machine): " ANSWER
     PEER_SSH_USER="${ANSWER:-$DEFAULT_SSH_USER}"
