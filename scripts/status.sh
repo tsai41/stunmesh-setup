@@ -23,4 +23,8 @@ if PID="$(_stunmesh_pid)"; then
   echo "stunmesh-go: running (pid $PID)"
 else
   echo "stunmesh-go: not running"
+  if [[ -f "$STATE/stunmesh.log" ]] && PANIC_LINE="$(tail -n 20 "$STATE/stunmesh.log" | grep '^panic:' | tail -1)" && [[ -n "$PANIC_LINE" ]]; then
+    echo "  ⚠ crashed — last error: $PANIC_LINE"
+    echo "  see: tail -50 $STATE/stunmesh.log"
+  fi
 fi
