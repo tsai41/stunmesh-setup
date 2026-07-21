@@ -6,7 +6,6 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 . ./scripts/lib.sh
 
-STUNMESH_VERSION="v1.9.0"
 mkdir -p "$STATE"
 
 # pre-scripts/ checkouts keep runtime files in repo root; without this move setup would regenerate the keypair
@@ -134,30 +133,28 @@ if ! docker info >/dev/null 2>&1; then
 fi
 echo "    ok"
 
+echo "==> Looking up latest stunmesh-go release"
+RELEASE_JSON="$(curl -fsSL https://api.github.com/repos/tjjh89017/stunmesh-go/releases/latest)"
+STUNMESH_VERSION="$(jq -r '.tag_name' <<<"$RELEASE_JSON")"
+[[ -n "$STUNMESH_VERSION" && "$STUNMESH_VERSION" != "null" ]] || { echo "✗ could not determine latest stunmesh-go release" >&2; exit 1; }
+echo "    latest: ${STUNMESH_VERSION}"
+
 echo "==> Downloading stunmesh-go ${STUNMESH_VERSION}"
 case "$OS" in
   Darwin) OSKEY="darwin" ;;
   Linux)  OSKEY="linux" ;;
 esac
 case "$OS/$(uname -m)" in
-  Darwin/arm64)
-    BIN="stunmesh-${OSKEY}-arm64-${STUNMESH_VERSION}"
-    EXPECTED_SHA256="8b6d12226db02f8c1c38e5040f4dfb2c726d440596e78d0f34e5bcbbba799f3f"
-    ;;
-  Darwin/x86_64)
-    BIN="stunmesh-${OSKEY}-amd64-${STUNMESH_VERSION}"
-    EXPECTED_SHA256="8994a430baed23020a755a9997c40323225a43d3fe6c6f930954005311491597"
-    ;;
-  Linux/arm64|Linux/aarch64)
-    BIN="stunmesh-${OSKEY}-arm64-${STUNMESH_VERSION}"
-    EXPECTED_SHA256="262b25293735490a903f99ef7511a954e26ae346cb809cb7bdc7e7ebf8a32c77"
-    ;;
-  Linux/x86_64)
-    BIN="stunmesh-${OSKEY}-amd64-${STUNMESH_VERSION}"
-    EXPECTED_SHA256="2914c919202a0e8cf61049a60a4600dfb51fe77a0d6489c32ffa4913336d956e"
-    ;;
+  Darwin/arm64)         ARCHKEY="arm64" ;;
+  Darwin/x86_64)        ARCHKEY="amd64" ;;
+  Linux/arm64|Linux/aarch64) ARCHKEY="arm64" ;;
+  Linux/x86_64)         ARCHKEY="amd64" ;;
   *) echo "✗ Unsupported arch: $(uname -m)" >&2; exit 1 ;;
 esac
+BIN="stunmesh-${OSKEY}-${ARCHKEY}-${STUNMESH_VERSION}"
+# GitHub-computed digest of the release asset; still verified against the actual download below
+EXPECTED_SHA256="$(jq -r --arg name "$BIN" '.assets[] | select(.name == $name) | .digest' <<<"$RELEASE_JSON" | sed 's/^sha256://')"
+[[ -n "$EXPECTED_SHA256" ]] || { echo "✗ no release asset named ${BIN}" >&2; exit 1; }
 
 _sha256() {
   if [[ "$OS" == "Darwin" ]]; then
