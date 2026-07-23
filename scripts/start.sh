@@ -167,3 +167,9 @@ echo
 echo "✓ All started. Once both machines are up, the tunnel forms in ~1-2 min. Verify:"
 echo "  ping $PEER_IP"
 echo "  tail -f $STATE/stunmesh.log"
+if [[ "$OS" == "Darwin" ]]; then
+  echo
+  echo "Note: if this machine can go to sleep, stunmesh-go stops publishing and the"
+  echo "      peer loses the tunnel. Check System Settings > Energy (or 'pmset -g'),"
+  echo "      or keep it awake while running: caffeinate -i -w \$(cat $STATE/stunmesh.pid)"
+fi
