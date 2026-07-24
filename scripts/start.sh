@@ -26,7 +26,6 @@ if [[ -n "$PROBLEMS" ]]; then
   exit 1
 fi
 
-DHT_STARTED=0
 WG_STARTED=0
 STUN_STARTED=0
 START_COMPLETE=0
@@ -45,9 +44,7 @@ _rollback_start() {
   if (( WG_STARTED )); then
     sudo env PATH="$PATH" wg-quick down "$PWD/$WG_CONF" >/dev/null 2>&1
   fi
-  if (( DHT_STARTED )); then
-    docker compose stop >/dev/null 2>&1
-  fi
+  _dht_rollback
   return "$status"
 }
 trap _rollback_start EXIT
@@ -74,16 +71,7 @@ if [[ -f "$STATE/config.yaml" ]]; then
   # keep user edits; only the interface name (per boot on macOS) and the
   # DHT endpoint (picked by the probe, but never a custom value) change
   sed -i.bak -E "s/^(  \")(utun[0-9]+|${WG_CONF_NAME})(\":)/\\1${UTUN}\\3/" "$STATE/config.yaml"
-  CURRENT_DHT="$(sed -nE 's/^ *endpoint: "([^"]*)".*/\1/p' "$STATE/config.yaml" | head -1)"
-  case "$CURRENT_DHT" in
-    "$DHT_ENDPOINT") ;;
-    "$DHT_PUBLIC_ENDPOINT"|"$DHT_LOCAL_ENDPOINT")
-      sed -i.bak -E "s|^( *endpoint: \")[^\"]*(\")|\\1${DHT_ENDPOINT}\\2|" "$STATE/config.yaml" ;;
-    "")
-      echo "    ⚠ no quoted dht endpoint line in config.yaml; wanted $DHT_ENDPOINT — stunmesh-go may use a stale endpoint" >&2 ;;
-    *)
-      echo "    keeping custom dht endpoint $CURRENT_DHT (probe picked $DHT_ENDPOINT)" ;;
-  esac
+  _dht_sync_endpoint "$STATE/config.yaml"
   rm -f "$STATE/config.yaml.bak"
   echo "    using existing config.yaml (interface $UTUN)"
 else

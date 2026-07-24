@@ -8,26 +8,7 @@ cd "$(dirname "$0")/.."
 ERRORS=0
 
 echo "==> stunmesh-go"
-if PID="$(_stunmesh_pid)"; then
-  if sudo kill "$PID"; then
-    for _ in {1..20}; do
-      _stunmesh_pid >/dev/null || break
-      sleep 0.1
-    done
-    if _stunmesh_pid >/dev/null; then
-      echo "✗ stunmesh-go did not stop after SIGTERM" >&2
-      ERRORS=1
-    else
-      echo "    stopped"
-    fi
-  else
-    echo "✗ failed to stop stunmesh-go (pid $PID)" >&2
-    ERRORS=1
-  fi
-else
-  echo "    not running"
-fi
-rm -f "$STATE/stunmesh.pid"
+_stop_stunmesh || ERRORS=1
 
 echo "==> WireGuard"
 if _wg_running; then

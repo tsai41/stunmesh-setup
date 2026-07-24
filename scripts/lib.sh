@@ -156,3 +156,30 @@ _stunmesh_pid() {
     *) return 1 ;;
   esac
 }
+
+# SIGTERM + poll for stunmesh-go to exit; pidfile is removed in every path.
+# returns 1 if it was running but didn't stop, 0 otherwise
+_stop_stunmesh() {
+  local rc=0 pid
+  if pid="$(_stunmesh_pid)"; then
+    if sudo kill "$pid"; then
+      for _ in {1..20}; do
+        _stunmesh_pid >/dev/null || break
+        sleep 0.1
+      done
+      if _stunmesh_pid >/dev/null; then
+        echo "✗ stunmesh-go did not stop after SIGTERM" >&2
+        rc=1
+      else
+        echo "    stopped"
+      fi
+    else
+      echo "✗ failed to stop stunmesh-go (pid $pid)" >&2
+      rc=1
+    fi
+  else
+    echo "    not running"
+  fi
+  rm -f "$STATE/stunmesh.pid"
+  return "$rc"
+}

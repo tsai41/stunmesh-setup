@@ -2,10 +2,11 @@
 # dht.sh — DHT proxy selection and lifecycle: public Jami proxy first, local
 # dhtnode (docker) only as fallback. Sourced after lib.sh; callers cd to repo
 # root first. All docker/DHT knowledge lives here and in compose.yaml.
-# shellcheck disable=SC2034  # DHT_ENDPOINT / DHT_STARTED are read by the sourcing scripts
+# shellcheck disable=SC2034  # DHT_ENDPOINT is read by the sourcing scripts
 
 DHT_PUBLIC_ENDPOINT="https://dhtproxy3.jami.net"
 DHT_LOCAL_ENDPOINT="http://127.0.0.1:8080"
+DHT_STARTED=0
 
 # good IPv4 node count a DHT proxy reports; 0 when unreachable or malformed
 _dht_good() {
@@ -90,4 +91,27 @@ _dht_down() {
     # daemon down usually means no container is running either; warn, don't fail
     echo "    ⚠ cannot inspect docker (daemon not running?); if dhtnode is up, stop it manually" >&2
   fi
+}
+
+# best-effort teardown for a failed start's rollback; never fails the caller
+_dht_rollback() {
+  if (( DHT_STARTED )); then
+    docker compose stop >/dev/null 2>&1 || true
+  fi
+}
+
+# reconcile config.yaml's dht endpoint with the probe result: rewrite when it
+# matches a known endpoint, keep a custom value, warn if the line is missing
+_dht_sync_endpoint() {
+  local config="$1" current
+  current="$(sed -nE 's/^ *endpoint: "([^"]*)".*/\1/p' "$config" | head -1)"
+  case "$current" in
+    "$DHT_ENDPOINT") ;;
+    "$DHT_PUBLIC_ENDPOINT"|"$DHT_LOCAL_ENDPOINT")
+      sed -i.bak -E "s|^( *endpoint: \")[^\"]*(\")|\\1${DHT_ENDPOINT}\\2|" "$config" ;;
+    "")
+      echo "    ⚠ no quoted dht endpoint line in config.yaml; wanted $DHT_ENDPOINT — stunmesh-go may use a stale endpoint" >&2 ;;
+    *)
+      echo "    keeping custom dht endpoint $current (probe picked $DHT_ENDPOINT)" ;;
+  esac
 }
