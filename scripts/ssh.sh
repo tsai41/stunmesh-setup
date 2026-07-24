@@ -110,7 +110,7 @@ case "$ACTION" in
       exit 1
     fi
     _save_user
-    _banner "SOCKS5 proxy 127.0.0.1:${PROXY_PORT} via ${SSH_USER}@${PEER_IP} — Ctrl-C or make stop ends it (browser setup: PROXY.md)"
+    _banner "SOCKS5 proxy 127.0.0.1:${PROXY_PORT} via ${SSH_USER}@${PEER_IP} — Ctrl-C or make stop ends it (browser setup: docs/proxy.md)"
     # backgrounded so the pid lands in proxy.pid for make stop; password
     # prompts still work — ssh asks on /dev/tty, not stdin
     RC=0

@@ -4,16 +4,17 @@ Guide for AI agents working in this repo.
 
 ## What this is
 
-Wrapper scripts building a WireGuard P2P tunnel between exactly two machines (node A `10.66.0.1`, node B `10.66.0.2`) using upstream [stunmesh-go](https://github.com/tjjh89017/stunmesh-go) (GPL-2.0, downloaded as a release binary at setup — never vendored) and a local OpenDHT proxy managed by docker compose. Scripts are MIT.
+Wrapper scripts building a WireGuard P2P tunnel between exactly two machines (node A `10.66.0.1`, node B `10.66.0.2`) using upstream [stunmesh-go](https://github.com/tjjh89017/stunmesh-go) (GPL-2.0, downloaded as a release binary at setup — never vendored). Endpoints are exchanged over OpenDHT: the public Jami proxy (`dhtproxy3.jami.net`) by default, a local docker `dhtnode` as fallback (or a deliberate self-host). Scripts are MIT. User-facing docs: `README.md` (install/use), `docs/how-it-works.md` (mechanism + trust model), `docs/proxy.md` (SOCKS5 LAN browse), `docs/troubleshooting.md`; `docs/README.md` indexes them.
 
 ## File map
 
 - `scripts/setup.sh` — one-time per machine: check-only dependency preflight (never installs), download binary, generate wg keypair, write `state/settings.env` + `state/stunmesh0.conf`
-- `scripts/start.sh` / `scripts/stop.sh` — lifecycle: compose up dhtnode → wait DHT bootstrap → wg-quick → stunmesh-go (root, pidfile; runs with cwd `state/`)
+- `scripts/start.sh` / `scripts/stop.sh` / `scripts/restart.sh` — lifecycle: probe public proxy, else compose up dhtnode → wait DHT bootstrap → wg-quick → stunmesh-go (root, pidfile; runs with cwd `state/`)
+- `scripts/ssh.sh` — `connect` / `proxy` (SOCKS5 `ssh -D`) / `setup` / `teardown` subcommands behind `make ssh*` and `make proxy`
 - `scripts/next.sh` — state-machine guide printing the single next step (`make next`)
 - `scripts/lib.sh` — shared: `STATE`, `OS`, `WG_CONF_NAME`, `WG_CONF`, `_wg_running`, `_stunmesh_pid`; all scripts `cd` to repo root first
 - `compose.yaml` — dhtnode container; port bound to loopback; `container_name` pinned
-- `Makefile` — thin launcher: `setup NODE=A PEER_KEY=…`, `start`, `stop`, `status`, `logs`, `next`
+- `Makefile` — thin launcher: `setup NODE=A PEER_KEY=…`, `start`, `stop`, `restart`, `status`, `logs`, `next`, `ssh`, `proxy`, `ssh-setup`, `ssh-teardown`, `check`, `test`
 - Runtime files (all under `state/`, gitignored as a directory): `settings.env` (metadata, not secret), `wg.key` + `stunmesh0.conf` (SECRETS), `config.yaml`, `stunmesh.log`, `stunmesh.pid`, `stunmesh-go` binary
 
 ## Two-machine order
@@ -38,6 +39,8 @@ When unsure which step a machine is on, run `make next` — it inspects local st
 - Never commit runtime files; private key material must not appear in tracked files or command output.
 
 ## Verify changes
+
+`make check` bundles the static gates (bash syntax, ShellCheck, `docker compose config`, whitespace); `make test` runs the isolated shell tests (never touches the real `state/` or tunnel). Individually, or to probe error paths:
 
 ```bash
 bash -n scripts/*.sh && shellcheck scripts/*.sh   # SC1090 warning is expected
