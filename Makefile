@@ -3,7 +3,7 @@
 #   make setup NODE=B PEER_KEY=<the key node A printed>
 #   make start / stop / status / logs
 
-.PHONY: setup start stop restart status logs next ssh ssh-setup ssh-teardown check test
+.PHONY: setup start stop restart status logs next ssh proxy ssh-setup ssh-teardown check test
 
 next:
 	@./scripts/next.sh
@@ -29,6 +29,9 @@ logs:
 # USER comes from the environment for every make run; only honor it when set on the command line
 ssh:
 	@./scripts/ssh.sh connect $(if $(filter command line,$(origin USER)),--user "$(USER)")
+
+proxy:
+	@./scripts/ssh.sh proxy $(if $(PROXY_PORT),--port "$(PROXY_PORT)") $(if $(filter command line,$(origin USER)),--user "$(USER)")
 
 ssh-setup:
 	@./scripts/ssh.sh setup $(if $(HOST),--host "$(HOST)") $(if $(filter command line,$(origin USER)),--user "$(USER)")

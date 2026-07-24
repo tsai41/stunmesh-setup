@@ -1,9 +1,11 @@
 #!/usr/bin/env bash
 # ssh.sh — SSH to the peer over the tunnel.
 #   connect   ssh <user>@PEER_IP (default action)
+#   proxy     SOCKS5 proxy on 127.0.0.1:<port> through the peer (ssh -D)
 #   setup     write state/ssh.conf + one Include line at the top of ~/.ssh/config
 #   teardown  remove that Include line again
-# Usage: make ssh [USER=<name>] / make ssh-setup [HOST=<alias>] [USER=<name>] / make ssh-teardown
+# Usage: make ssh [USER=<name>] / make proxy [PROXY_PORT=<port>] [USER=<name>]
+#        make ssh-setup [HOST=<alias>] [USER=<name>] / make ssh-teardown
 set -euo pipefail
 cd "$(dirname "$0")/.."
 . ./scripts/lib.sh
@@ -18,10 +20,12 @@ ACTION="${1:-connect}"
 [[ $# -gt 0 ]] && shift
 HOST_ALIAS=""
 USER_ARG=""
+PROXY_PORT="10000"
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --host) HOST_ALIAS="$2"; shift 2 ;;
     --user) USER_ARG="$2"; shift 2 ;;
+    --port) PROXY_PORT="$2"; shift 2 ;;
     *) echo "unknown argument: $1" >&2; exit 1 ;;
   esac
 done
@@ -57,6 +61,22 @@ _file_mode() { stat -f %Lp "$1" 2>/dev/null || stat -c %a "$1" 2>/dev/null || ec
 # drop an existing managed block (marker line + the Include line under it)
 _strip_managed() { awk -v m="$MARKER" '$0 == m { skip = 2 } skip > 0 { skip--; next } { print }' "$1"; }
 
+_banner() {
+  if [[ -t 1 ]]; then
+    printf '\033[1;30;42m %s \033[0m\n' "$1"
+  else
+    echo "$1"
+  fi
+}
+
+# remember an explicitly chosen user so the next make ssh/proxy reuses it
+_save_user() {
+  if [[ -n "$USER_ARG" && "$USER_ARG" != "$PEER_SSH_USER" ]]; then
+    PEER_SSH_USER="$SSH_USER"
+    _save_settings
+  fi
+}
+
 if [[ -n "$USER_ARG" ]] && ! _valid_name "$USER_ARG"; then
   echo "✗ Invalid user name: $USER_ARG" >&2
   exit 1
@@ -66,22 +86,38 @@ SSH_USER="${USER_ARG:-${PEER_SSH_USER:-$(id -un)}}"
 case "$ACTION" in
   connect)
     _require_peer_ip
-    if [[ -n "$USER_ARG" && "$USER_ARG" != "$PEER_SSH_USER" ]]; then
-      PEER_SSH_USER="$SSH_USER"
-      _save_settings
-    fi
+    _save_user
     # printed locally, so it lands above ssh's password prompt and the remote
     # MOTD — word it as "about to connect", not "logged in"
-    MSG="Connecting to ${SSH_USER}@${PEER_IP} — leave the remote shell with exit (or Ctrl-D)"
-    if [[ -t 1 ]]; then
-      printf '\033[1;30;42m %s \033[0m\n' "$MSG"
-    else
-      echo "$MSG"
-    fi
+    _banner "Connecting to ${SSH_USER}@${PEER_IP} — leave the remote shell with exit (or Ctrl-D)"
     RC=0
     ssh "${SSH_USER}@${PEER_IP}" || RC=$?
     # ssh exits with the remote shell's last status, which make would report as a
     # failed target; only ssh's own connection errors (255) are ours to surface
+    if (( RC == 255 )); then
+      exit 255
+    fi
+    ;;
+
+  proxy)
+    _require_peer_ip
+    if ! [[ "$PROXY_PORT" =~ ^[0-9]+$ ]] || (( PROXY_PORT < 1 || PROXY_PORT > 65535 )); then
+      echo "✗ Invalid port: $PROXY_PORT (want 1-65535)" >&2
+      exit 1
+    fi
+    if PID="$(_proxy_pid)"; then
+      echo "✗ Proxy already running (pid $PID) — Ctrl-C it or make stop first" >&2
+      exit 1
+    fi
+    _save_user
+    _banner "SOCKS5 proxy 127.0.0.1:${PROXY_PORT} via ${SSH_USER}@${PEER_IP} — Ctrl-C or make stop ends it (browser setup: PROXY.md)"
+    # backgrounded so the pid lands in proxy.pid for make stop; password
+    # prompts still work — ssh asks on /dev/tty, not stdin
+    RC=0
+    ssh -N -D "127.0.0.1:${PROXY_PORT}" "${SSH_USER}@${PEER_IP}" &
+    echo $! > "$STATE/proxy.pid"
+    trap 'rm -f "$STATE/proxy.pid"' EXIT
+    wait $! || RC=$?
     if (( RC == 255 )); then
       exit 255
     fi
@@ -162,7 +198,7 @@ EOF
     ;;
 
   *)
-    echo "usage: $0 connect|setup|teardown [--host <alias>] [--user <name>]" >&2
+    echo "usage: $0 connect|proxy|setup|teardown [--host <alias>] [--user <name>] [--port <port>]" >&2
     exit 1
     ;;
 esac

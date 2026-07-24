@@ -157,6 +157,45 @@ _stunmesh_pid() {
   esac
 }
 
+# pid from pidfile iff it is a live ssh (guards PID reuse after crash/reboot)
+_proxy_pid() {
+  local pid
+  [[ -f "$STATE/proxy.pid" ]] || return 1
+  pid="$(cat "$STATE/proxy.pid")"
+  [[ "$pid" =~ ^[0-9]+$ ]] || return 1
+  case "$(ps -p "$pid" -o comm= 2>/dev/null)" in
+    *ssh) echo "$pid" ;;
+    *) return 1 ;;
+  esac
+}
+
+# SIGTERM + poll for the SOCKS proxy ssh to exit; pidfile is removed in every
+# path. returns 1 if it was running but didn't stop, 0 otherwise
+_stop_proxy() {
+  local rc=0 pid
+  if pid="$(_proxy_pid)"; then
+    if kill "$pid" 2>/dev/null; then
+      for _ in {1..20}; do
+        _proxy_pid >/dev/null || break
+        sleep 0.1
+      done
+      if _proxy_pid >/dev/null; then
+        echo "✗ proxy ssh did not stop after SIGTERM" >&2
+        rc=1
+      else
+        echo "    stopped"
+      fi
+    else
+      echo "✗ failed to stop proxy (pid $pid)" >&2
+      rc=1
+    fi
+  else
+    echo "    not running"
+  fi
+  rm -f "$STATE/proxy.pid"
+  return "$rc"
+}
+
 # SIGTERM + poll for stunmesh-go to exit; pidfile is removed in every path.
 # returns 1 if it was running but didn't stop, 0 otherwise
 _stop_stunmesh() {
