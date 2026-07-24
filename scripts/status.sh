@@ -1,17 +1,17 @@
 #!/usr/bin/env bash
-# status.sh — project-scoped status for dhtnode, WireGuard, and stunmesh-go
+# status.sh — project-scoped status for DHT, WireGuard, and stunmesh-go
 set -euo pipefail
 cd "$(dirname "$0")/.."
 . ./scripts/lib.sh
+. ./scripts/dht.sh
+
+echo "dht public:  good $(_dht_good "$DHT_PUBLIC_ENDPOINT") ($DHT_PUBLIC_ENDPOINT)"
 
 if STATUS="$(docker ps --filter 'name=^/dhtnode$' --format '{{.Status}}' 2>/dev/null)" && [[ -n "$STATUS" ]]; then
-  echo "dhtnode:     $STATUS"
+  echo "dhtnode:     $STATUS (good $(_dht_good "$DHT_LOCAL_ENDPOINT"))"
 else
-  echo "dhtnode:     not running"
+  echo "dhtnode:     not running (fallback)"
 fi
-
-curl -sS --max-time 2 http://127.0.0.1:8080/node/info 2>/dev/null \
-  | jq -r '"dht good:    \(.ipv4.good // 0)"' 2>/dev/null || true
 
 if _wg_running; then
   echo "wireguard:   running"

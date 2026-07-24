@@ -1,8 +1,9 @@
 #!/usr/bin/env bash
-# stop.sh — stop stunmesh-go + WireGuard + dhtnode (container kept for next start)
+# stop.sh — stop stunmesh-go + WireGuard + dhtnode if the fallback ran (container kept for next start)
 set -euo pipefail
 cd "$(dirname "$0")/.."
 . ./scripts/lib.sh
+. ./scripts/dht.sh
 
 ERRORS=0
 
@@ -38,22 +39,7 @@ else
   echo "    not running"
 fi
 
-echo "==> OpenDHT proxy"
-if DHT_NAMES="$(docker ps --format '{{.Names}}' 2>/dev/null)"; then
-  if grep -qx dhtnode <<< "$DHT_NAMES"; then
-    if docker compose stop >/dev/null 2>&1 || docker stop dhtnode >/dev/null; then
-      echo "    stopped"
-    else
-      echo "✗ failed to stop dhtnode" >&2
-      ERRORS=1
-    fi
-  else
-    echo "    not running"
-  fi
-else
-  echo "✗ cannot inspect dhtnode; Docker daemon unavailable" >&2
-  ERRORS=1
-fi
+_dht_down || ERRORS=1
 
 if (( ERRORS )); then
   echo "✗ Stop completed with errors" >&2

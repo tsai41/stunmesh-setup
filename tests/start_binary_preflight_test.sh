@@ -6,7 +6,7 @@ TMP="$(mktemp -d)"
 trap 'rm -rf "$TMP"' EXIT
 
 mkdir -p "$TMP/repo/scripts" "$TMP/repo/state" "$TMP/bin"
-cp "$ROOT/scripts/start.sh" "$ROOT/scripts/lib.sh" "$TMP/repo/scripts/"
+cp "$ROOT/scripts/start.sh" "$ROOT/scripts/lib.sh" "$ROOT/scripts/dht.sh" "$TMP/repo/scripts/"
 
 cat > "$TMP/repo/state/settings.env" <<'EOF'
 NODE=A

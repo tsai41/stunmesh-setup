@@ -6,7 +6,7 @@ TMP="$(mktemp -d)"
 trap 'rm -rf "$TMP"' EXIT
 
 mkdir -p "$TMP/repo/scripts" "$TMP/repo/state" "$TMP/bin"
-cp "$ROOT/scripts/status.sh" "$ROOT/scripts/lib.sh" "$TMP/repo/scripts/" 2>/dev/null || cp "$ROOT/scripts/lib.sh" "$TMP/repo/scripts/"
+cp "$ROOT/scripts/status.sh" "$ROOT/scripts/lib.sh" "$ROOT/scripts/dht.sh" "$TMP/repo/scripts/" 2>/dev/null || cp "$ROOT/scripts/lib.sh" "$TMP/repo/scripts/"
 printf '999999\n' > "$TMP/repo/state/stunmesh.pid"
 
 cat > "$TMP/bin/uname" <<'EOF'
@@ -26,7 +26,7 @@ EOF
 cat > "$TMP/bin/jq" <<'EOF'
 #!/usr/bin/env bash
 cat >/dev/null
-echo 'dht good:    3'
+echo 3
 EOF
 cat > "$TMP/bin/pgrep" <<'EOF'
 #!/usr/bin/env bash
@@ -40,8 +40,8 @@ if [[ ! -f "$TMP/repo/scripts/status.sh" ]]; then
 fi
 
 OUTPUT="$(PATH="$TMP/bin:/usr/bin:/bin" bash "$TMP/repo/scripts/status.sh")"
-[[ "$OUTPUT" == *'dhtnode:     Up 1 minute'* ]] || { echo "missing DHT status: $OUTPUT" >&2; exit 1; }
-[[ "$OUTPUT" == *'dht good:    3'* ]] || { echo "missing DHT health: $OUTPUT" >&2; exit 1; }
+[[ "$OUTPUT" == *'dhtnode:     Up 1 minute (good 3)'* ]] || { echo "missing DHT status: $OUTPUT" >&2; exit 1; }
+[[ "$OUTPUT" == *'dht public:  good 3'* ]] || { echo "missing public DHT health: $OUTPUT" >&2; exit 1; }
 [[ "$OUTPUT" == *'wireguard:   not running'* ]] || { echo "missing WireGuard status: $OUTPUT" >&2; exit 1; }
 [[ "$OUTPUT" == *'stunmesh-go: not running'* ]] || { echo "stale pidfile was reported as running: $OUTPUT" >&2; exit 1; }
 

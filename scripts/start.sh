@@ -1,8 +1,9 @@
 #!/usr/bin/env bash
-# start.sh — dhtnode (compose) -> wg-quick -> stunmesh-go; sudo needed for interface + daemon
+# start.sh — DHT proxy (public, docker fallback) -> wg-quick -> stunmesh-go; sudo needed for interface + daemon
 set -euo pipefail
 cd "$(dirname "$0")/.."
 . ./scripts/lib.sh
+. ./scripts/dht.sh
 
 [[ -f "$STATE/settings.env" ]] || { echo "✗ Run make setup first" >&2; exit 1; }
 _load_settings
@@ -15,8 +16,6 @@ if [[ ! -f "$STATE/config.yaml" && -z "${PEER_KEY:-}" ]]; then
   echo "  Not there yet? 'make next' prints how to get it." >&2
   exit 1
 fi
-docker info >/dev/null 2>&1 || { echo "✗ Docker daemon not running; start Docker Desktop / colima / systemctl start docker" >&2; exit 1; }
-
 PROBLEMS="$(_config_problems)"
 if [[ -n "$PROBLEMS" ]]; then
   {
@@ -53,37 +52,7 @@ _rollback_start() {
 }
 trap _rollback_start EXIT
 
-echo "==> OpenDHT proxy (docker compose)"
-# compose.yaml pins container_name; a dhtnode from docker run or another compose project collides
-if docker ps -a --format '{{.Names}}' | grep -qx dhtnode; then
-  PROJECT="$(basename "$PWD" | tr '[:upper:]' '[:lower:]' | sed 's/[^a-z0-9_-]//g')"
-  LABEL="$(docker inspect -f '{{index .Config.Labels "com.docker.compose.project"}}' dhtnode 2>/dev/null || true)"
-  if [[ "$LABEL" != "$PROJECT" ]]; then
-    echo "✗ Container 'dhtnode' belongs to another Docker project (${LABEL:-unmanaged})." >&2
-    echo "  Inspect it first: docker inspect dhtnode" >&2
-    echo "  If it is the old tutorial container and safe to remove: docker rm -f dhtnode" >&2
-    exit 1
-  fi
-fi
-if ! docker ps --format '{{.Names}}' | grep -qx dhtnode; then
-  DHT_STARTED=1
-fi
-docker compose up -d
-
-echo "==> Waiting for DHT bootstrap"
-GOOD=0
-for _ in {1..30}; do
-  GOOD="$(curl -sS --max-time 2 http://127.0.0.1:8080/node/info 2>/dev/null \
-    | jq -r '.ipv4.good // 0' 2>/dev/null || echo 0)"
-  [[ "$GOOD" =~ ^[0-9]+$ ]] || GOOD=0
-  (( GOOD > 0 )) && break
-  sleep 2
-done
-if (( GOOD == 0 )); then
-  echo "✗ DHT bootstrap failed (ipv4.good=0). Check network, or: docker compose logs dhtnode" >&2
-  exit 1
-fi
-echo "    ready (good nodes: $GOOD)"
+_dht_up
 
 echo "==> WireGuard"
 if _wg_running; then
@@ -102,10 +71,21 @@ fi
 echo "    interface: $UTUN ($SELF_IP)"
 
 if [[ -f "$STATE/config.yaml" ]]; then
-  # keep user edits; only the interface name changes per boot on macOS
+  # keep user edits; only the interface name (per boot on macOS) and the
+  # DHT endpoint (picked by the probe, but never a custom value) change
   sed -i.bak -E "s/^(  \")(utun[0-9]+|${WG_CONF_NAME})(\":)/\\1${UTUN}\\3/" "$STATE/config.yaml"
+  CURRENT_DHT="$(sed -nE 's/^ *endpoint: "([^"]*)".*/\1/p' "$STATE/config.yaml" | head -1)"
+  case "$CURRENT_DHT" in
+    "$DHT_ENDPOINT") ;;
+    "$DHT_PUBLIC_ENDPOINT"|"$DHT_LOCAL_ENDPOINT")
+      sed -i.bak -E "s|^( *endpoint: \")[^\"]*(\")|\\1${DHT_ENDPOINT}\\2|" "$STATE/config.yaml" ;;
+    "")
+      echo "    ⚠ no quoted dht endpoint line in config.yaml; wanted $DHT_ENDPOINT — stunmesh-go may use a stale endpoint" >&2 ;;
+    *)
+      echo "    keeping custom dht endpoint $CURRENT_DHT (probe picked $DHT_ENDPOINT)" ;;
+  esac
   rm -f "$STATE/config.yaml.bak"
-  echo "    using existing config.yaml (interface set to $UTUN)"
+  echo "    using existing config.yaml (interface $UTUN)"
 else
 # utun name may differ per boot, so config is generated at start time
 cat > "$STATE/config.yaml" <<EOF
@@ -134,7 +114,7 @@ plugins:
   dht:
     type: builtin
     name: opendht
-    endpoint: "http://127.0.0.1:8080"
+    endpoint: "$DHT_ENDPOINT"
     timeout: "15s"
     dedup: false
 EOF

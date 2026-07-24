@@ -111,25 +111,29 @@ case "$OS" in
   *) echo "✗ Unsupported OS: $OS (macOS / Linux only)" >&2; exit 1 ;;
 esac
 
-if [[ "$OS" == "Darwin" ]]; then
-  _need docker "Docker Desktop (https://docker.com/products/docker-desktop) or 'brew install colima docker && colima start'"
-else
-  _need docker "sudo apt-get install docker.io (or your distro's package)"
-fi
-
 if (( MISSING )); then
   echo "✗ Install the missing dependencies above, then re-run make setup" >&2
   exit 1
 fi
-if ! docker compose version >/dev/null 2>&1; then
-  echo "✗ docker compose plugin missing (bundled with Docker Desktop; Linux: docker-compose-plugin package)" >&2
-  exit 1
-fi
-if ! docker info >/dev/null 2>&1; then
-  echo "✗ Cannot talk to Docker daemon." >&2
+
+# docker is optional: it only serves the local dhtnode fallback when the
+# public DHT proxy is unreachable, so a missing docker warns instead of failing
+DOCKER_OK=0
+if ! command -v docker >/dev/null 2>&1; then
+  echo "⚠ docker not found — the public DHT proxy will be used; the local dhtnode fallback is unavailable" >&2
+  if [[ "$OS" == "Darwin" ]]; then
+    echo "  to enable it: Docker Desktop (https://docker.com/products/docker-desktop) or 'brew install colima docker && colima start'" >&2
+  else
+    echo "  to enable it: sudo apt-get install docker.io (or your distro's package)" >&2
+  fi
+elif ! docker compose version >/dev/null 2>&1; then
+  echo "⚠ docker compose plugin missing — local dhtnode fallback unavailable (bundled with Docker Desktop; Linux: docker-compose-plugin package)" >&2
+elif ! docker info >/dev/null 2>&1; then
+  echo "⚠ Docker daemon not running — local dhtnode fallback unavailable until it is started" >&2
   echo "  macOS: start Docker Desktop / colima start" >&2
   echo "  Linux: sudo systemctl start docker; if it is running, add yourself to the docker group (sudo usermod -aG docker \$USER, then re-login)" >&2
-  exit 1
+else
+  DOCKER_OK=1
 fi
 echo "    ok"
 
@@ -185,8 +189,12 @@ else
   mv "$DOWNLOAD_TMP" "$STATE/stunmesh-go"
 fi
 
-echo "==> Pulling OpenDHT image"
-docker compose pull -q
+if (( DOCKER_OK )); then
+  echo "==> Pulling OpenDHT image (dhtnode fallback)"
+  docker compose pull -q
+else
+  echo "==> Skipping OpenDHT image pull (docker unavailable)"
+fi
 
 echo "==> WireGuard keypair"
 if [[ ! -f "$STATE/wg.key" ]]; then

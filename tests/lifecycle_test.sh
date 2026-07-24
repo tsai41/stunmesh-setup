@@ -6,7 +6,7 @@ TMP="$(mktemp -d)"
 trap 'rm -rf "$TMP"' EXIT
 
 mkdir -p "$TMP/repo/scripts" "$TMP/repo/state" "$TMP/bin"
-cp "$ROOT/scripts/start.sh" "$ROOT/scripts/stop.sh" "$ROOT/scripts/lib.sh" "$TMP/repo/scripts/"
+cp "$ROOT/scripts/start.sh" "$ROOT/scripts/stop.sh" "$ROOT/scripts/lib.sh" "$ROOT/scripts/dht.sh" "$TMP/repo/scripts/"
 cat > "$TMP/repo/state/settings.env" <<'EOF'
 NODE=A
 SELF_IP=10.66.0.1
@@ -41,14 +41,21 @@ case "\${1:-} \${2:-}" in
   *) exit 0 ;;
 esac
 EOF
+# public proxy down, local dhtnode healthy — forces the docker fallback path
 cat > "$TMP/bin/curl" <<'EOF'
 #!/usr/bin/env bash
-echo '{"ipv4":{"good":1}}'
+for a in "$@"; do
+  case "$a" in
+    *dhtproxy3*) echo '{"ipv4":{"good":0}}'; exit 0 ;;
+    *127.0.0.1*) echo '{"ipv4":{"good":1}}'; exit 0 ;;
+  esac
+done
+echo '{"ipv4":{"good":0}}'
 EOF
 cat > "$TMP/bin/jq" <<'EOF'
 #!/usr/bin/env bash
-cat >/dev/null
-echo 1
+IN="$(cat)"
+grep -o '"good":[0-9]*' <<<"$IN" | head -1 | cut -d: -f2
 EOF
 cat > "$TMP/bin/wg-quick" <<EOF
 #!/usr/bin/env bash
@@ -89,5 +96,29 @@ STOP_STATUS=$?
 set -e
 (( STOP_STATUS != 0 )) || { echo "stop should report the failed kill" >&2; exit 1; }
 grep -q '^docker ps ' "$TMP/actions" || { echo "stop abandoned remaining cleanup after kill failed" >&2; exit 1; }
+
+# fallback container running, docker healthy — stop must stop it and succeed
+: > "$TMP/actions"
+rm -f "$TMP/repo/state/stunmesh.pid"
+cat > "$TMP/bin/docker" <<EOF
+#!/usr/bin/env bash
+printf 'docker %s\n' "\$*" >> "$TMP/actions"
+if [[ "\${1:-}" == ps ]]; then echo dhtnode; fi
+exit 0
+EOF
+chmod +x "$TMP/bin/docker"
+PATH="$TMP/bin:/usr/bin:/bin" bash "$TMP/repo/scripts/stop.sh" >/dev/null 2>&1 \
+  || { echo "stop failed with a running dhtnode" >&2; exit 1; }
+grep -q '^docker compose stop' "$TMP/actions" || { echo "stop did not stop the running dhtnode" >&2; exit 1; }
+
+# docker present but daemon unreachable — stop must warn yet still succeed
+cat > "$TMP/bin/docker" <<'EOF'
+#!/usr/bin/env bash
+exit 1
+EOF
+chmod +x "$TMP/bin/docker"
+OUTPUT="$(PATH="$TMP/bin:/usr/bin:/bin" bash "$TMP/repo/scripts/stop.sh" 2>&1)" \
+  || { echo "stop failed when docker daemon is down: $OUTPUT" >&2; exit 1; }
+[[ "$OUTPUT" == *'cannot inspect docker'* ]] || { echo "missing daemon-down warning: $OUTPUT" >&2; exit 1; }
 
 echo "ok: lifecycle verifies startup, rolls back, and performs best-effort stop"
