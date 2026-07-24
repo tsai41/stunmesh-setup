@@ -73,7 +73,13 @@ case "$ACTION" in
     # printed locally, so it lands above ssh's password prompt and the remote
     # MOTD — word it as "about to connect", not "logged in"
     echo "Connecting to ${SSH_USER}@${PEER_IP} — leave the remote shell with exit (or Ctrl-D)"
-    exec ssh "${SSH_USER}@${PEER_IP}"
+    RC=0
+    ssh "${SSH_USER}@${PEER_IP}" || RC=$?
+    # ssh exits with the remote shell's last status, which make would report as a
+    # failed target; only ssh's own connection errors (255) are ours to surface
+    if (( RC == 255 )); then
+      exit 255
+    fi
     ;;
 
   setup)
