@@ -3,7 +3,7 @@
 #   make setup NODE=B PEER_KEY=<the key node A printed>
 #   make start / stop / status / logs
 
-.PHONY: setup start stop status logs next ssh ssh-setup ssh-teardown check test
+.PHONY: setup start stop restart status logs next ssh ssh-setup ssh-teardown check test
 
 next:
 	@./scripts/next.sh
@@ -16,6 +16,9 @@ start:
 
 stop:
 	./scripts/stop.sh
+
+restart:
+	./scripts/restart.sh
 
 status:
 	@./scripts/status.sh
