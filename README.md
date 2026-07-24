@@ -108,7 +108,7 @@ Everything the scripts generate lives in `state/` — gitignored as a whole (it 
 - `state/wg.key` — your WireGuard private key, written by setup
 - `state/stunmesh-go` — upstream release binary, plus `stunmesh.log` / `stunmesh.pid` at runtime
 
-`stunmesh0.conf`, `config.yaml`, and `settings.env` are all fine to hand-edit. `settings.env` is read as a plain list of `KEY=VALUE` lines — never executed — so changing one line (say `PEER_SSH_USER`) is a valid alternative to re-running setup. `start` never overwrites an existing `config.yaml`; it only refreshes the interface name line, since the macOS utunX changes per boot. Delete either generated file to get a fresh one.
+`stunmesh0.conf`, `config.yaml`, and `settings.env` are all fine to hand-edit. `settings.env` is read as a plain list of `KEY=VALUE` lines — never executed — so changing one line (say `PEER_SSH_USER`) is a valid alternative to re-running setup. `start` never overwrites an existing `config.yaml`; it only refreshes the interface-name line (the macOS utunX changes per boot) and the dht `endpoint:` line, which is re-pointed between the public proxy and the local fallback depending on what the start-time probe picked — a custom endpoint you set by hand is left untouched. Delete either generated file to get a fresh one.
 
 ## Notes
 
