@@ -2,13 +2,13 @@
 
 Connect two machines (macOS / Linux) into one private encrypted network — SSH between them, copy files, reach local services, as if they sat on the same LAN. Neither machine needs a public IP, a VPS, or an account anywhere: the tunnel is built by hole punching through public STUN servers and a public DHT bootstrap node.
 
-Wrapper scripts around [stunmesh-go](https://github.com/tjjh89017/stunmesh-go), WireGuard, and a self-hosted OpenDHT proxy in docker. All hole punching, encryption, and DHT publishing is upstream work by [@tjjh89017](https://github.com/tjjh89017) — this repo only wraps install and start.
+Wrapper scripts around [stunmesh-go](https://github.com/tjjh89017/stunmesh-go), WireGuard, and an OpenDHT proxy (public Jami proxy by default, self-hosted docker fallback). All hole punching, encryption, and DHT publishing is upstream work by [@tjjh89017](https://github.com/tjjh89017) — this repo only wraps install and start.
 
 ## How it works
 
-Endpoint exchange is the core problem of P2P: each side must learn the other's public IP:port. stunmesh-go supports several storage backends for this (Cloudflare DNS, OpenDHT, external plugins); **this setup uses the built-in OpenDHT plugin with a dockerized local DHT proxy** — endpoints travel over the public DHT network, so no DNS zone, account, or API token is needed.
+Endpoint exchange is the core problem of P2P: each side must learn the other's public IP:port. stunmesh-go supports several storage backends for this (Cloudflare DNS, OpenDHT, external plugins); **this setup uses the built-in OpenDHT plugin against the public Jami DHT proxy** (`https://dhtproxy3.jami.net`) — endpoints travel over the public DHT network, so no DNS zone, account, or API token is needed.
 
-- Each machine runs a local `dhtnode` (docker compose, see [`compose.yaml`](compose.yaml); REST proxy bound to loopback only), bootstrapped to `bootstrap.jami.net:4222`
+- `make start` probes the public proxy first; when it is unreachable, it falls back to a local `dhtnode` (docker compose, see [`compose.yaml`](compose.yaml); REST proxy bound to loopback only), bootstrapped to `bootstrap.jami.net:4222`
 - stunmesh-go discovers its public IP:port via STUN and publishes it (Curve25519-encrypted) to the DHT
 - Peer endpoints update automatically; tunnel IPs: node A `10.66.0.1`, node B `10.66.0.2`
 
@@ -16,13 +16,13 @@ Endpoint exchange is the core problem of P2P: each side must learn the other's p
 
 Scripts only check and print install hints — they never install anything.
 
-- Docker with the compose plugin (daemon running); macOS: Docker Desktop or `brew install colima docker docker-compose`; Linux: `docker-compose-plugin` package
+- Optional: Docker with the compose plugin (daemon running) — only needed for the local `dhtnode` fallback when the public DHT proxy is unreachable; macOS: Docker Desktop or `brew install colima docker docker-compose`; Linux: `docker-compose-plugin` package
 - macOS: `wireguard-go`, `wireguard-tools`, `jq` via [Homebrew](https://brew.sh)
 - Linux: kernel >= 5.6 (older needs wireguard-dkms), `wireguard-tools`, `jq`, `curl`, `sha256sum` (coreutils)
 
 stunmesh-go itself needs no manual install: setup downloads the official prebuilt release binary (v1.9.0) from [upstream releases](https://github.com/tjjh89017/stunmesh-go/releases) and verifies its pinned SHA-256 before installing it. Existing binaries that do not match the pinned release are replaced with a verified copy.
 
-The OpenDHT container is pinned to the official `v4.1.1` multi-architecture image digest, so both machines run the same immutable image.
+The fallback OpenDHT container is pinned to the official `v4.1.1` multi-architecture image digest, so both machines run the same immutable image.
 
 > [!NOTE]
 > App Store WireGuard is sandboxed and not supported — same constraint as upstream.
@@ -46,7 +46,7 @@ Custom tunnel IPs: `IP=<self> PEER_IP=<peer>` (same /24; defaults A=10.66.0.1, B
 ## Usage
 
 ```bash
-make start       # dhtnode + WireGuard + stunmesh-go (asks sudo)
+make start       # DHT proxy + WireGuard + stunmesh-go (asks sudo)
 ping 10.66.0.2   # from node A; B pings 10.66.0.1; ~1-2 min to punch through
 make stop
 ```
@@ -76,11 +76,12 @@ The peer still needs its own SSH server running and reachable — this only poin
 
 ```bash
 tail -f state/stunmesh.log                          # stunmesh-go, including punching attempts
-curl -s http://127.0.0.1:8080/node/info | jq .ipv4.good   # DHT peers seen; 0 means no bootstrap
+curl -s https://dhtproxy3.jami.net/node/info | jq .ipv4.good   # public DHT proxy health
+curl -s http://127.0.0.1:8080/node/info | jq .ipv4.good   # fallback dhtnode; 0 means no bootstrap
 docker compose logs dhtnode
 ```
 
-**`make start` fails at "DHT bootstrap failed".** The local dhtnode found no DHT peers. Usually outbound UDP to `bootstrap.jami.net:4222` is blocked, or the machine has no working network yet.
+**`make start` fails at "DHT bootstrap failed".** The public proxy was unreachable and the fallback dhtnode found no DHT peers. Usually outbound UDP to `bootstrap.jami.net:4222` is blocked, or the machine has no working network yet.
 
 **Both machines are running but ping never succeeds.** Punching takes 1-2 minutes after the *second* machine starts; wait before digging. If it stays down, check `state/stunmesh.log` on both sides — the endpoint each side published must be a public IP:port. If both machines sit behind symmetric NAT, hole punching cannot work at all (upstream limitation); one side needs a different network.
 
