@@ -12,6 +12,21 @@ Endpoint exchange is the core problem of P2P: each side must learn the other's p
 - stunmesh-go discovers its public IP:port via STUN and publishes it (Curve25519-encrypted) to the DHT
 - Peer endpoints update automatically; tunnel IPs: node A `10.66.0.1`, node B `10.66.0.2`
 
+How `make start` picks the DHT endpoint — this is the only place docker enters the picture:
+
+```mermaid
+flowchart LR
+    A[make start] --> B{probe dhtproxy3.jami.net}
+    B -- reachable --> C[use the public proxy<br/>docker never touched]
+    B -- unreachable --> D{docker available?}
+    D -- yes --> E[start local dhtnode container<br/>config endpoint rewritten to 127.0.0.1:8080]
+    D -- no --> F[fail: DHT bootstrap failed]
+```
+
+Whichever side wins, the `endpoint:` line in `state/config.yaml` is re-pointed to match on every start (details in [Generated files](#generated-files)).
+
+**Trusting the public proxy.** `dhtproxy3.jami.net` is the Jami project's public OpenDHT REST proxy. It sees your source IP and the DHT keys you read and write, but never the endpoints themselves — every value is Curve25519-encrypted for the peer, so neither the proxy nor anyone else on the DHT can decrypt it. To keep even that metadata away from a third party, run your own `dhtnode` (the [`compose.yaml`](compose.yaml) here works on any docker host) and hand-edit `endpoint:` to point at it — custom endpoints are never rewritten by `start`.
+
 ## Requirements
 
 Scripts only check and print install hints — they never install anything.
