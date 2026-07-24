@@ -70,6 +70,9 @@ case "$ACTION" in
       PEER_SSH_USER="$SSH_USER"
       _save_settings
     fi
+    # printed locally, so it lands above ssh's password prompt and the remote
+    # MOTD — word it as "about to connect", not "logged in"
+    echo "Connecting to ${SSH_USER}@${PEER_IP} — leave the remote shell with exit (or Ctrl-D)"
     exec ssh "${SSH_USER}@${PEER_IP}"
     ;;
 
