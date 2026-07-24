@@ -72,7 +72,12 @@ case "$ACTION" in
     fi
     # printed locally, so it lands above ssh's password prompt and the remote
     # MOTD — word it as "about to connect", not "logged in"
-    echo "Connecting to ${SSH_USER}@${PEER_IP} — leave the remote shell with exit (or Ctrl-D)"
+    MSG="Connecting to ${SSH_USER}@${PEER_IP} — leave the remote shell with exit (or Ctrl-D)"
+    if [[ -t 1 ]]; then
+      printf '\033[1;30;42m %s \033[0m\n' "$MSG"
+    else
+      echo "$MSG"
+    fi
     RC=0
     ssh "${SSH_USER}@${PEER_IP}" || RC=$?
     # ssh exits with the remote shell's last status, which make would report as a
