@@ -27,7 +27,9 @@ plugins:
   dht:
     type: builtin
     name: opendht
-    endpoint: "http://127.0.0.1:8080"
+    # public proxy by default; start.sh rewrites this to http://127.0.0.1:8080
+    # when the proxy is unreachable and the local dhtnode fallback runs
+    endpoint: "https://dhtproxy3.jami.net"
     timeout: "15s"
     # OpenDHT values expire after 10 minutes; dedup must stay false
     dedup: false
