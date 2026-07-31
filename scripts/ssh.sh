@@ -20,17 +20,36 @@ ACTION="${1:-connect}"
 [[ $# -gt 0 ]] && shift
 HOST_ALIAS=""
 USER_ARG=""
+PEER_ARG=""
 PROXY_PORT="10000"
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --host) HOST_ALIAS="$2"; shift 2 ;;
     --user) USER_ARG="$2"; shift 2 ;;
+    --peer) PEER_ARG="$2"; shift 2 ;;
     --port) PROXY_PORT="$2"; shift 2 ;;
     *) echo "unknown argument: $1" >&2; exit 1 ;;
   esac
 done
 
 _load_settings
+
+# hub use-case: pick which peer to reach. an explicit PEER wins; with several
+# peers and no PEER, default to the first. a lone/legacy peer keeps settings.env.
+# PEER_FROM_STORE stops _save_user writing a store peer's user back to settings.
+PEER_FROM_STORE=0
+if [[ -n "$PEER_ARG" ]]; then
+  [[ "$PEER_ARG" =~ ^[A-Za-z0-9._-]+$ ]] || { echo "✗ Invalid peer name: $PEER_ARG" >&2; exit 1; }
+  ip="$(_peer_field "$PEER_ARG" 3)"
+  [[ -n "$ip" ]] || { echo "✗ No peer named '$PEER_ARG'. See: make list-peers" >&2; exit 1; }
+  PEER_IP="$ip"
+  PEER_SSH_USER="$(_peer_field "$PEER_ARG" 4)"
+  PEER_FROM_STORE=1
+elif (( $(_peer_count) > 1 )); then
+  IFS=$'\t' read -r _pname _pkey PEER_IP PEER_SSH_USER < <(_all_peers)
+  PEER_FROM_STORE=1
+  echo "ℹ Multiple peers; using '$_pname' ($PEER_IP). Pick another with PEER=<name> (see make list-peers)" >&2
+fi
 
 _require_peer_ip() {
   if [[ -z "$PEER_IP" ]]; then
@@ -71,6 +90,8 @@ _banner() {
 
 # remember an explicitly chosen user so the next make ssh/proxy reuses it
 _save_user() {
+  # a store peer's user lives in peers.d, not settings.env — don't write it back
+  (( PEER_FROM_STORE )) && return 0
   if [[ -n "$USER_ARG" && "$USER_ARG" != "$PEER_SSH_USER" ]]; then
     PEER_SSH_USER="$SSH_USER"
     _save_settings

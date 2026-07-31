@@ -6,6 +6,10 @@ WG_CONF_NAME="stunmesh0"
 WG_CONF="$STATE/${WG_CONF_NAME}.conf"
 OS="$(uname -s)"
 WG_NAME_FILE="/var/run/wireguard/${WG_CONF_NAME}.name"
+# extra peers for the hub use-case live one-per-file here; when it holds any
+# peer it is the source of truth, otherwise the single legacy peer in
+# settings.env is used (so a plain 2-node setup never grows this directory)
+PEERS_DIR="$STATE/peers.d"
 
 _valid_ipv4() {
   local ip="$1" octet
@@ -39,6 +43,79 @@ _init_settings() {
 
 # the peer key is always the OTHER node's; messages name it rather than say "the key"
 _other_node() { [[ "${NODE:-}" == "A" ]] && echo B || echo A; }
+
+# peer names become file names under peers.d and interface/peer keys in the
+# generated configs, so hold them to the same safe charset as ssh aliases
+_valid_peer_name() { [[ "$1" =~ ^[A-Za-z0-9._-]+$ ]]; }
+
+# any file under peers.d means the hub store is in use
+_peers_dir_active() { compgen -G "$PEERS_DIR/*.env" >/dev/null 2>&1; }
+
+# emit one record per configured peer: name<TAB>key<TAB>ip<TAB>ssh_user.
+# peers.d wins when populated; otherwise synthesize the legacy single peer from
+# settings.env (callers _load_settings first). peers.d/*.env is parsed, never
+# sourced, for the same reason settings.env is.
+_all_peers() {
+  local f name key ip ssh_user line
+  if _peers_dir_active; then
+    for f in "$PEERS_DIR"/*.env; do
+      [[ -e "$f" ]] || continue
+      name="$(basename "$f" .env)"
+      key=""; ip=""; ssh_user=""
+      while IFS= read -r line || [[ -n "$line" ]]; do
+        line="${line%$'\r'}"
+        [[ "$line" =~ ^[[:space:]]*(KEY|IP|SSH_USER)=(.*)$ ]] || continue
+        case "${BASH_REMATCH[1]}" in
+          KEY) key="${BASH_REMATCH[2]}" ;;
+          IP) ip="${BASH_REMATCH[2]}" ;;
+          SSH_USER) ssh_user="${BASH_REMATCH[2]}" ;;
+        esac
+      done < "$f"
+      printf '%s\t%s\t%s\t%s\n' "$name" "$key" "$ip" "$ssh_user"
+    done
+    return 0
+  fi
+  [[ -n "${PEER_KEY:-}" ]] || return 0
+  name="$(_other_node | tr '[:upper:]' '[:lower:]')"
+  printf '%s\t%s\t%s\t%s\n' "$name" "$PEER_KEY" "${PEER_IP:-}" "${PEER_SSH_USER:-}"
+}
+
+# grep -c exits 1 on zero peers; keep the count assignment from tripping set -e
+_peer_count() { _all_peers | grep -c . || true ; }
+
+# look up one field of one peer by name; <name> <col: 2=key 3=ip 4=ssh_user>
+_peer_field() {
+  _all_peers | awk -F'\t' -v n="$1" -v c="$2" '$1 == n { print $c; exit }'
+}
+
+# render state/stunmesh0.conf for every configured peer. >1 peer uses /32 so the
+# AllowedIPs never overlap (WireGuard rejects overlap); a lone peer keeps the
+# /24 the 2-node flow has always written. <self-ip> <private-key>
+_render_wg_conf() {
+  local self_ip="$1" privkey="$2" count name key ip allowed
+  count="$(_peer_count)"
+  printf '[Interface]\nPrivateKey = %s\nAddress = %s/24\n' "$privkey" "$self_ip"
+  while IFS=$'\t' read -r name key ip _; do
+    [[ -n "$key" ]] || continue
+    if (( count > 1 )); then allowed="$ip/32"; else allowed="${self_ip%.*}.0/24"; fi
+    printf '\n[Peer]  # %s\nPublicKey = %s\nAllowedIPs = %s\nPersistentKeepalive = 25\n' \
+      "$name" "$key" "$allowed"
+  done < <(_all_peers)
+}
+
+# render state/config.yaml (stunmesh-go DHT config) with one peer block each.
+# <interface-name> <dht-endpoint>
+_render_config_yaml() {
+  local iface="$1" dht_endpoint="$2" name key ip
+  printf -- '---\nrefresh_interval: "1m"\nlog:\n  level: "info"\ninterfaces:\n  "%s":\n    protocol: "ipv4"\n    peers:\n' "$iface"
+  while IFS=$'\t' read -r name key ip _; do
+    [[ -n "$key" ]] || continue
+    printf '      "%s":\n        public_key: "%s"\n        plugin: dht\n        protocol: "ipv4"\n        ping:\n          enabled: true\n          target: "%s"\n          interval: "30s"\n          timeout: "5s"\n' \
+      "$name" "$key" "$ip"
+  done < <(_all_peers)
+  printf 'stun:\n  addresses:\n    - "stun.l.google.com:19302"\n    - "stun1.l.google.com:19302"\nplugins:\n  dht:\n    type: builtin\n    name: opendht\n    endpoint: "%s"\n    timeout: "15s"\n    dedup: false\n' \
+    "$dht_endpoint"
+}
 
 _is_setting() {
   local candidate
@@ -119,6 +196,27 @@ _peer_key_problems() {
 _config_problems() {
   local pub="" peer="" priv="" yaml_peer="" target=""
   [[ -f "$STATE/wg.key" ]] && pub="$(wg pubkey < "$STATE/wg.key" 2>/dev/null || true)"
+
+  # hub store active: validate each peer record instead of the single legacy peer.
+  # the generated configs are rendered straight from these records, so checking
+  # the records is what matters (settings.env PEER_KEY may be stale after add-peer)
+  if _peers_dir_active; then
+    local name key ip
+    while IFS=$'\t' read -r name key ip _; do
+      case "$key" in
+        '') echo "$PEERS_DIR/$name.env: KEY is empty" ;;
+        *'<'*) echo "$PEERS_DIR/$name.env: KEY is still a placeholder" ;;
+        *) [[ "$key" =~ ^[A-Za-z0-9+/]{43}=$ ]] || echo "$PEERS_DIR/$name.env: KEY is not a valid 44-character base64 public key"
+           [[ -n "$pub" && "$key" == "$pub" ]] && echo "$PEERS_DIR/$name.env: KEY is this machine's OWN key" ;;
+      esac
+      if [[ -z "$ip" ]]; then
+        echo "$PEERS_DIR/$name.env: IP is empty"
+      elif ! _valid_ipv4 "$ip"; then
+        echo "$PEERS_DIR/$name.env: IP is not a valid IPv4: $ip"
+      fi
+    done < <(_all_peers)
+    return 0
+  fi
 
   if [[ -f "$WG_CONF" ]]; then
     # sed, not awk with '=' as FS: WireGuard keys themselves end in '='
