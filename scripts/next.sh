@@ -46,3 +46,9 @@ else
   echo "Setup complete. Next: make start"
   echo "(remember to run start on the other machine too, then: ping $PEER_IP)"
 fi
+
+if _peers_dir_active; then
+  echo "Hub: $(_peer_count) peers configured (make list-peers)."
+else
+  echo "Connect another machine too? Make this one a hub: make add-peer (see docs/hub.md)."
+fi

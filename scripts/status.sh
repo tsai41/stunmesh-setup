@@ -19,6 +19,10 @@ else
   echo "wireguard:   not running"
 fi
 
+if _peers_dir_active; then
+  echo "peers:       $(_peer_count) configured (hub; make list-peers)"
+fi
+
 if PID="$(_stunmesh_pid)"; then
   echo "stunmesh-go: running (pid $PID)"
 else
