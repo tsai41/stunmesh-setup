@@ -53,6 +53,8 @@ make next         # the single next step for the current state
 - **`make ssh-setup`** adds a `stunmesh-peer` Host alias to `~/.ssh/config` (one Include line; existing aliases untouched), so plain `ssh stunmesh-peer` works from anywhere. `make ssh-teardown` removes it.
 - **Browse the peer's LAN** — its router page, a NAS, printers: `make proxy` opens a SOCKS5 proxy through the peer. See [docs/proxy.md](docs/proxy.md).
 
+- **Connect to more than one machine** — make this node a hub with `make add-peer` / `remove-peer` / `list-peers`. See [docs/hub.md](docs/hub.md).
+
 Scripts also run directly, e.g. `./scripts/setup.sh --node A`.
 
 ## Documentation
@@ -62,6 +64,7 @@ All under [`docs/`](docs/) — see its [index](docs/README.md) for the same list
 | Doc | What |
 |---|---|
 | [how-it-works.md](docs/how-it-works.md) | Endpoint exchange, DHT probe/fallback, trust model, invariants |
+| [hub.md](docs/hub.md) | Connect this machine to more than one node (add/remove/list peers) |
 | [state-files.md](docs/state-files.md) | What each `state/` file is, which are secret, what's hand-editable |
 | [proxy.md](docs/proxy.md) | Browse the peer's LAN over a SOCKS5 proxy |
 | [troubleshooting.md](docs/troubleshooting.md) | `make start` failures and the peer-side "endpoint unavailable" loop |
