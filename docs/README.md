@@ -9,6 +9,7 @@ Setup and first-run live in the [root README](../README.md); these are the deepe
 ### Do a task
 
 - [proxy.md](proxy.md) — browse the peer's LAN (its router page, a NAS, printers) through a SOCKS5 proxy over the tunnel.
+- [hub.md](hub.md) — connect this machine to more than one node: add/remove/list peers for the hub-and-spoke use-case.
 
 ### Look something up / fix it
 
