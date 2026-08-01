@@ -1,10 +1,8 @@
 #!/usr/bin/env bash
-# restart.sh — bounce stunmesh-go only; dhtnode + WireGuard stay up (start.sh skips them)
+# restart.sh — full stop then start, so config changes (a new/removed peer, an
+# edited conf) reload the WireGuard interface, not just bounce stunmesh-go
 set -euo pipefail
 cd "$(dirname "$0")/.."
-. ./scripts/lib.sh
 
-echo "==> stunmesh-go (restart)"
-_stop_stunmesh
-
+./scripts/stop.sh
 exec ./scripts/start.sh

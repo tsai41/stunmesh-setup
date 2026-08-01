@@ -112,7 +112,7 @@ case "$ACTION" in
     _write_peer "$ARG_NAME" "$ARG_KEY" "$ARG_IP" "$ARG_SSH_USER"
     _regenerate
     echo "✓ Added peer '$ARG_NAME' ($ARG_IP). Total peers: $(_peer_count)"
-    echo "  Apply it: make restart   (or make start if not running)"
+    echo "  Apply it: make restart   (reloads the WireGuard interface with the new peer)"
     ;;
 
   remove)
@@ -125,7 +125,7 @@ case "$ACTION" in
     if _peers_dir_active; then
       _regenerate
       echo "✓ Removed peer '$ARG_NAME'. Total peers: $(_peer_count)"
-      echo "  Apply it: make restart"
+      echo "  Apply it: make restart   (reloads the WireGuard interface)"
     else
       echo "✓ Removed peer '$ARG_NAME'. No peers left in the hub store."
       echo "  The 2-node peer in settings.env (if any) is used again; re-render with make setup / make start."

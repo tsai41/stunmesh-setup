@@ -22,7 +22,7 @@ On the hub:
 
 ```bash
 make add-peer NAME=c IP=10.66.0.3 KEY=<C's public key>
-make restart          # re-render + reload; the tunnel to existing peers is kept
+make restart          # reload WireGuard with the new peer (full stop + start)
 ```
 
 `NAME` is a short label (letters/digits/`.`/`_`/`-`). `IP` must be a free address
