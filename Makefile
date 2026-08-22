@@ -3,7 +3,7 @@
 #   make setup NODE=B PEER_KEY=<the key node A printed>
 #   make start / stop / status / logs
 
-.PHONY: setup start stop restart status logs next ssh proxy ssh-setup ssh-teardown add-peer remove-peer list-peers check test
+.PHONY: setup start stop restart status logs next key ssh proxy ssh-setup ssh-teardown add-peer remove-peer list-peers check test
 
 next:
 	@./scripts/next.sh
@@ -25,6 +25,11 @@ status:
 
 logs:
 	tail -f state/stunmesh.log
+
+# print this machine's public key, for pasting into the other node's setup/add-peer
+key:
+	@test -f state/wg.key || { echo "✗ No key yet — run make setup first" >&2; exit 1; }
+	@wg pubkey < state/wg.key
 
 # USER comes from the environment for every make run; only honor it when set on the command line
 ssh:
