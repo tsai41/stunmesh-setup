@@ -19,8 +19,22 @@ else
   echo "wireguard:   not running"
 fi
 
-if _peers_dir_active; then
-  echo "peers:       $(_peer_count) configured (hub; make list-peers)"
+# who this node is configured to reach, with the live handshake age when wg can
+# tell us for free. keys are 44 chars of noise here — `make peers` prints those
+_load_settings || true
+if [[ "$(_peer_count)" != "0" ]]; then
+  HANDSHAKES="$(_wg_handshakes)"
+  SUMMARY=""
+  while IFS=$'\t' read -r NAME KEY IP _; do
+    ENTRY="$NAME $IP"
+    if [[ -n "$HANDSHAKES" ]]; then
+      HS="$(_handshake_for "$KEY" "$HANDSHAKES")"
+      [[ -n "$HS" ]] && ENTRY="$ENTRY ($(_ago "$HS"))"
+    fi
+    SUMMARY="${SUMMARY:+$SUMMARY, }$ENTRY"
+  done < <(_all_peers)
+  echo "peers:       $(_peer_count) — $SUMMARY"
+  echo "             keys and details: make peers"
 fi
 
 if PID="$(_stunmesh_pid)"; then

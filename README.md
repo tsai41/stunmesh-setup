@@ -46,14 +46,15 @@ ping 10.66.0.2   # from A; B pings 10.66.0.1; ~1-2 min to punch through
 make ssh          # ssh into the peer over the tunnel (USER=<name> to override, remembered)
 make stop         # take the tunnel down (both sides lose it)
 make restart
-make status       # which of DHT / WireGuard / stunmesh-go are up
+make status       # which of DHT / WireGuard / stunmesh-go are up, and which peers this node reaches
+make peers        # every node this node is configured to reach, with the other end's key
 make next         # the single next step for the current state
 ```
 
 - **`make ssh-setup`** adds a `stunmesh-peer` Host alias to `~/.ssh/config` (one Include line; existing aliases untouched), so plain `ssh stunmesh-peer` works from anywhere. `make ssh-teardown` removes it.
 - **Browse the peer's LAN** — its router page, a NAS, printers: `make proxy` opens a SOCKS5 proxy through the peer. See [docs/proxy.md](docs/proxy.md).
 
-- **Connect to more than one machine** — make this node a hub with `make add-peer` / `remove-peer` / `list-peers`. See [docs/hub.md](docs/hub.md).
+- **Connect to more than one machine** — make this node a hub with `make add-peer` / `remove-peer` / `peers`. See [docs/hub.md](docs/hub.md).
 
 Scripts also run directly, e.g. `./scripts/setup.sh --node A`.
 

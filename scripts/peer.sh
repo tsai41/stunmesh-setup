@@ -3,7 +3,7 @@
 # that connects to more than one other node.
 #   add     make add-peer NAME=<name> IP=<10.66.0.x> [KEY=<peer pubkey>] [USER=<ssh user>]
 #   remove  make remove-peer NAME=<name>
-#   list    make list-peers
+#   list    make peers   (alias: make list-peers)
 # Adding the first extra peer migrates the existing 2-node peer into peers.d, so
 # peers.d becomes the single source of truth; both state configs are then
 # re-rendered from it. Apply the change with make restart (or make start).
@@ -61,14 +61,35 @@ _regenerate() {
 
 case "$ACTION" in
   list)
+    echo "this node:  ${NODE:-?}  ${SELF_IP:-?}"
+    [[ -n "$PUB_KEY" ]] && echo "  key:      $PUB_KEY"
+    echo
     if [[ "$(_peer_count)" == "0" ]]; then
       echo "No peers configured yet. Add one: make add-peer NAME=<name> IP=<10.66.0.x> KEY=<pubkey>"
       exit 0
     fi
-    printf '%-16s %-18s %s\n' NAME IP KEY
+    echo "can reach $(_peer_count) node(s):"
+    # the handshake column is dropped rather than filled with "-" when wg tells
+    # us nothing (interface down, or sudo would have to prompt)
+    HANDSHAKES="$(_wg_handshakes)"
+    if [[ -n "$HANDSHAKES" ]]; then
+      printf '%-16s %-18s %-15s %s\n' NAME IP 'LAST HANDSHAKE' KEY
+    else
+      printf '%-16s %-18s %s\n' NAME IP KEY
+    fi
     while IFS=$'\t' read -r name key ip _; do
-      printf '%-16s %-18s %s\n' "$name" "$ip" "$key"
+      if [[ -n "$HANDSHAKES" ]]; then
+        printf '%-16s %-18s %-15s %s\n' "$name" "$ip" "$(_ago "$(_handshake_for "$key" "$HANDSHAKES")")" "$key"
+      else
+        printf '%-16s %-18s %s\n' "$name" "$ip" "$key"
+      fi
     done < <(_all_peers)
+    if [[ -z "$HANDSHAKES" ]] && _wg_running; then
+      echo
+      echo "(live handshake times need root: sudo -v && make peers)"
+    fi
+    echo
+    echo "ssh into one: make ssh PEER=<name>"
     ;;
 
   add)

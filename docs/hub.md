@@ -37,7 +37,8 @@ re-rendered from it, and **`make setup` should not be re-run with a `PEER_KEY`**
 ## Manage peers
 
 ```bash
-make list-peers                 # name / IP / key of every peer
+make peers                      # name / IP / key of every peer, plus this node's own key
+                                # (alias: make list-peers; add sudo -v first for handshake ages)
 make remove-peer NAME=c         # drop one, then make restart
 ```
 

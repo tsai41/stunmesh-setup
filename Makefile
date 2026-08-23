@@ -3,7 +3,7 @@
 #   make setup NODE=B PEER_KEY=<the key node A printed>
 #   make start / stop / status / logs
 
-.PHONY: setup start stop restart status logs next key ssh proxy ssh-setup ssh-teardown add-peer remove-peer list-peers check test
+.PHONY: setup start stop restart status logs next key ssh proxy ssh-setup ssh-teardown add-peer remove-peer peers list-peers check test
 
 next:
 	@./scripts/next.sh
@@ -51,7 +51,8 @@ add-peer:
 remove-peer:
 	@./scripts/peer.sh remove $(if $(NAME),--name "$(NAME)")
 
-list-peers:
+# who can this node reach right now, and with which key on the other end
+peers list-peers:
 	@./scripts/peer.sh list
 
 check:

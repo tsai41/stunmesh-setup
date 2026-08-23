@@ -177,6 +177,47 @@ _wg_running() {
   fi
 }
 
+# live interface name, or 1 when it is not up. macOS records the dynamic utunX
+# in a root-only file, so reading it needs sudo we are not willing to prompt for
+_wg_iface() {
+  if [[ "$OS" == "Darwin" ]]; then
+    [[ -f "$WG_NAME_FILE" ]] || return 1
+    sudo -n cat "$WG_NAME_FILE" 2>/dev/null || return 1
+  else
+    [[ -d "/sys/class/net/${WG_CONF_NAME}" ]] || return 1
+    echo "$WG_CONF_NAME"
+  fi
+}
+
+# "<peer key><TAB><handshake epoch>" per live peer. Empty when the interface is
+# down or wg cannot be read without a password prompt: listing peers is a
+# read-only question and must never block on sudo.
+_wg_handshakes() {
+  local iface
+  iface="$(_wg_iface)" || return 0
+  sudo -n wg show "$iface" latest-handshakes 2>/dev/null || true
+}
+
+# handshake epoch for one peer key out of a _wg_handshakes blob; empty if absent
+_handshake_for() {  # <key> <blob>
+  [[ -n "$2" ]] || return 0
+  awk -F'\t' -v k="$1" '$1 == k { print $2; exit }' <<< "$2"
+}
+
+# an epoch as an age a human reads at a glance; "-" unknown, "never" = 0
+_ago() {  # <epoch>
+  local now age
+  [[ "$1" =~ ^[0-9]+$ ]] || { echo "-"; return 0; }
+  (( $1 == 0 )) && { echo "never"; return 0; }
+  now="$(date +%s)"
+  age=$(( now - $1 ))
+  (( age < 0 )) && age=0
+  if (( age < 60 )); then echo "${age}s ago"
+  elif (( age < 3600 )); then echo "$(( age / 60 ))m ago"
+  elif (( age < 86400 )); then echo "$(( age / 3600 ))h ago"
+  else echo "$(( age / 86400 ))d ago"; fi
+}
+
 # the peer-key checks both config files need; <file> <field name> <key> <own pubkey>
 _peer_key_problems() {
   local file="$1" field="$2" key="$3" pub="$4"
