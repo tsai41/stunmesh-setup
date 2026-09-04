@@ -361,3 +361,63 @@ _stop_stunmesh() {
   rm -f "$STATE/stunmesh.pid"
   return "$rc"
 }
+
+_sha256() {
+  if [[ "$OS" == "Darwin" ]]; then
+    shasum -a 256 "$1" | awk '{print $1}'
+  else
+    sha256sum "$1" | awk '{print $1}'
+  fi
+}
+
+# Fetch the newest release unless state/stunmesh-go already has its checksum.
+# STUNMESH_UPDATED is consumed by scripts/update.sh after this function returns.
+_install_stunmesh_go() {
+  local release_json bin oskey archkey expected actual tmp
+  export STUNMESH_UPDATED=0
+  echo "==> Looking up latest stunmesh-go release"
+  release_json="$(curl -fsSL https://api.github.com/repos/tjjh89017/stunmesh-go/releases/latest)"
+  STUNMESH_VERSION="$(jq -r '.tag_name' <<<"$release_json")"
+  [[ -n "$STUNMESH_VERSION" && "$STUNMESH_VERSION" != "null" ]] || { echo "✗ could not determine latest stunmesh-go release" >&2; return 1; }
+  echo "    latest: ${STUNMESH_VERSION}"
+
+  case "$OS" in
+    Darwin) oskey="darwin" ;;
+    Linux) oskey="linux" ;;
+    *) echo "✗ Unsupported OS: $OS" >&2; return 1 ;;
+  esac
+  case "$OS/$(uname -m)" in
+    Darwin/arm64) archkey="arm64" ;;
+    Darwin/x86_64) archkey="amd64" ;;
+    Linux/arm64|Linux/aarch64) archkey="arm64" ;;
+    Linux/x86_64) archkey="amd64" ;;
+    *) echo "✗ Unsupported arch: $(uname -m)" >&2; return 1 ;;
+  esac
+  bin="stunmesh-${oskey}-${archkey}-${STUNMESH_VERSION}"
+  expected="$(jq -r --arg name "$bin" '.assets[] | select(.name == $name) | .digest' <<<"$release_json" | sed 's/^sha256://')"
+  [[ -n "$expected" && "$expected" != "null" ]] || { echo "✗ no release asset named ${bin}" >&2; return 1; }
+
+  if [[ -f "$STATE/stunmesh-go" ]] && [[ "$(_sha256 "$STATE/stunmesh-go")" == "$expected" ]]; then
+    chmod +x "$STATE/stunmesh-go"
+    echo "    already present, skipping"
+    return 0
+  fi
+
+  echo "==> Downloading stunmesh-go ${STUNMESH_VERSION}"
+  [[ ! -e "$STATE/stunmesh-go" ]] || echo "    existing binary differs from ${STUNMESH_VERSION}; downloading"
+  tmp="$(mktemp "$STATE/.stunmesh-go.XXXXXX")"
+  if ! curl -fSL --progress-bar -o "$tmp" \
+    "https://github.com/tjjh89017/stunmesh-go/releases/download/${STUNMESH_VERSION}/${bin}"; then
+    rm -f "$tmp"
+    return 1
+  fi
+  actual="$(_sha256 "$tmp")"
+  if [[ "$actual" != "$expected" ]]; then
+    rm -f "$tmp"
+    echo "✗ stunmesh-go checksum mismatch: expected $expected, got $actual" >&2
+    return 1
+  fi
+  chmod +x "$tmp"
+  mv "$tmp" "$STATE/stunmesh-go"
+  export STUNMESH_UPDATED=1
+}

@@ -65,6 +65,8 @@ if [[ "$OS" == "Darwin" ]]; then
 else
   UTUN="$WG_CONF_NAME"
 fi
+# SELF_IP is initialized by _load_settings above.
+# shellcheck disable=SC2153
 echo "    interface: $UTUN ($SELF_IP)"
 
 if [[ -f "$STATE/config.yaml" ]]; then

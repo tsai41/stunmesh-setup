@@ -46,6 +46,7 @@ while [[ $# -gt 0 ]]; do
     *) shift ;;
   esac
 done
+[[ -n "$output" ]] || exit 0
 printf 'verified-download\n' > "$output"
 EOF
 cat > "$TMP/bin/sha256sum" <<'EOF'
@@ -56,7 +57,15 @@ case "$1" in
 esac
 printf '%s  %s\n' "$hash" "$1"
 EOF
-for command in wireguard-go wg-quick jq; do
+cat > "$TMP/bin/jq" <<'EOF'
+#!/usr/bin/env bash
+if [[ "$*" == *tag_name* ]]; then
+  echo v9.9.9
+else
+  echo sha256:2914c919202a0e8cf61049a60a4600dfb51fe77a0d6489c32ffa4913336d956e
+fi
+EOF
+for command in wireguard-go wg-quick; do
   cp "$TMP/bin/docker" "$TMP/bin/$command"
 done
 chmod +x "$TMP/bin/"*

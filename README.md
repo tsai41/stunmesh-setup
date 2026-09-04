@@ -46,6 +46,7 @@ ping 10.66.0.2   # from A; B pings 10.66.0.1; ~1-2 min to punch through
 make ssh          # ssh into the peer over the tunnel (USER=<name> to override, remembered)
 make stop         # take the tunnel down (both sides lose it)
 make restart
+make update       # fetch the latest stunmesh-go release; restart daemon if it is running
 make status       # which of DHT / WireGuard / stunmesh-go are up, and which peers this node reaches
 make peers        # every node this node is configured to reach, with the other end's key
 make next         # the single next step for the current state

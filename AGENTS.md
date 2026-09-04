@@ -10,11 +10,12 @@ Wrapper scripts building a WireGuard P2P tunnel between exactly two machines (no
 
 - `scripts/setup.sh` — one-time per machine: check-only dependency preflight (never installs), download binary, generate wg keypair, write `state/settings.env` + `state/stunmesh0.conf`
 - `scripts/start.sh` / `scripts/stop.sh` / `scripts/restart.sh` — lifecycle: probe public proxy, else compose up dhtnode → wait DHT bootstrap → wg-quick → stunmesh-go (root, pidfile; runs with cwd `state/`)
+- `scripts/update.sh` — downloads the latest verified stunmesh-go binary; restarts only the daemon when it is running
 - `scripts/ssh.sh` — `connect` / `proxy` (SOCKS5 `ssh -D`) / `setup` / `teardown` subcommands behind `make ssh*` and `make proxy`
 - `scripts/next.sh` — state-machine guide printing the single next step (`make next`)
-- `scripts/lib.sh` — shared: `STATE`, `OS`, `WG_CONF_NAME`, `WG_CONF`, `_wg_running`, `_stunmesh_pid`; all scripts `cd` to repo root first
+- `scripts/lib.sh` — shared: `STATE`, `OS`, `WG_CONF_NAME`, `WG_CONF`, `_wg_running`, `_stunmesh_pid`, `_install_stunmesh_go`; all scripts `cd` to repo root first
 - `compose.yaml` — dhtnode container; port bound to loopback; `container_name` pinned
-- `Makefile` — thin launcher: `setup NODE=A PEER_KEY=…`, `start`, `stop`, `restart`, `status`, `logs`, `next`, `ssh`, `proxy`, `ssh-setup`, `ssh-teardown`, `check`, `test`
+- `Makefile` — thin launcher: `setup NODE=A PEER_KEY=…`, `update`, `start`, `stop`, `restart`, `status`, `logs`, `next`, `ssh`, `proxy`, `ssh-setup`, `ssh-teardown`, `check`, `test`
 - Runtime files (all under `state/`, gitignored as a directory): `settings.env` (metadata, not secret), `wg.key` + `stunmesh0.conf` (SECRETS), `config.yaml`, `stunmesh.log`, `stunmesh.pid`, `stunmesh-go` binary
 
 ## Two-machine order

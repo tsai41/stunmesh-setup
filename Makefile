@@ -3,13 +3,16 @@
 #   make setup NODE=B PEER_KEY=<the key node A printed>
 #   make start / stop / status / logs
 
-.PHONY: setup start stop restart status logs next key ssh proxy ssh-setup ssh-teardown add-peer remove-peer peers list-peers check test
+.PHONY: setup update start stop restart status logs next key ssh proxy ssh-setup ssh-teardown add-peer remove-peer peers list-peers check test
 
 next:
 	@./scripts/next.sh
 
 setup:
 	./scripts/setup.sh $(if $(NODE),--node "$(NODE)") $(if $(PEER_KEY),--peer-key "$(PEER_KEY)") $(if $(IP),--ip "$(IP)") $(if $(PEER_IP),--peer-ip "$(PEER_IP)") $(if $(filter command line,$(origin USER)),--peer-ssh-user "$(USER)")
+
+update:
+	./scripts/update.sh
 
 start:
 	./scripts/start.sh

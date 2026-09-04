@@ -137,57 +137,7 @@ else
 fi
 echo "    ok"
 
-echo "==> Looking up latest stunmesh-go release"
-RELEASE_JSON="$(curl -fsSL https://api.github.com/repos/tjjh89017/stunmesh-go/releases/latest)"
-STUNMESH_VERSION="$(jq -r '.tag_name' <<<"$RELEASE_JSON")"
-[[ -n "$STUNMESH_VERSION" && "$STUNMESH_VERSION" != "null" ]] || { echo "✗ could not determine latest stunmesh-go release" >&2; exit 1; }
-echo "    latest: ${STUNMESH_VERSION}"
-
-echo "==> Downloading stunmesh-go ${STUNMESH_VERSION}"
-case "$OS" in
-  Darwin) OSKEY="darwin" ;;
-  Linux)  OSKEY="linux" ;;
-esac
-case "$OS/$(uname -m)" in
-  Darwin/arm64)         ARCHKEY="arm64" ;;
-  Darwin/x86_64)        ARCHKEY="amd64" ;;
-  Linux/arm64|Linux/aarch64) ARCHKEY="arm64" ;;
-  Linux/x86_64)         ARCHKEY="amd64" ;;
-  *) echo "✗ Unsupported arch: $(uname -m)" >&2; exit 1 ;;
-esac
-BIN="stunmesh-${OSKEY}-${ARCHKEY}-${STUNMESH_VERSION}"
-# GitHub-computed digest of the release asset; still verified against the actual download below
-EXPECTED_SHA256="$(jq -r --arg name "$BIN" '.assets[] | select(.name == $name) | .digest' <<<"$RELEASE_JSON" | sed 's/^sha256://')"
-[[ -n "$EXPECTED_SHA256" ]] || { echo "✗ no release asset named ${BIN}" >&2; exit 1; }
-
-_sha256() {
-  if [[ "$OS" == "Darwin" ]]; then
-    shasum -a 256 "$1" | awk '{print $1}'
-  else
-    sha256sum "$1" | awk '{print $1}'
-  fi
-}
-
-if [[ -f "$STATE/stunmesh-go" ]] && [[ "$(_sha256 "$STATE/stunmesh-go")" == "$EXPECTED_SHA256" ]]; then
-  chmod +x "$STATE/stunmesh-go"
-  echo "    already present, skipping"
-else
-  [[ ! -e "$STATE/stunmesh-go" ]] || echo "    existing binary failed checksum; downloading a clean copy"
-  DOWNLOAD_TMP="$(mktemp "$STATE/.stunmesh-go.XXXXXX")"
-  if ! curl -fSL --progress-bar -o "$DOWNLOAD_TMP" \
-    "https://github.com/tjjh89017/stunmesh-go/releases/download/${STUNMESH_VERSION}/${BIN}"; then
-    rm -f "$DOWNLOAD_TMP"
-    exit 1
-  fi
-  ACTUAL_SHA256="$(_sha256 "$DOWNLOAD_TMP")"
-  if [[ "$ACTUAL_SHA256" != "$EXPECTED_SHA256" ]]; then
-    rm -f "$DOWNLOAD_TMP"
-    echo "✗ stunmesh-go checksum mismatch: expected $EXPECTED_SHA256, got $ACTUAL_SHA256" >&2
-    exit 1
-  fi
-  chmod +x "$DOWNLOAD_TMP"
-  mv "$DOWNLOAD_TMP" "$STATE/stunmesh-go"
-fi
+_install_stunmesh_go
 
 if (( DOCKER_OK )); then
   echo "==> Pulling OpenDHT image (dhtnode fallback)"

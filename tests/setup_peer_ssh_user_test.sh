@@ -27,7 +27,21 @@ case "$(uname -m)" in
 esac
 printf '%s  %s\n' "$hash" "${@: -1}"
 EOF
-for command in wireguard-go wg-quick jq docker; do
+cat > "$TMP/bin/curl" <<'EOF'
+#!/usr/bin/env bash
+exit 0
+EOF
+cat > "$TMP/bin/jq" <<'EOF'
+#!/usr/bin/env bash
+if [[ "$*" == *tag_name* ]]; then
+  echo v9.9.9
+elif [[ "$(uname -m)" == arm64 ]]; then
+  echo sha256:8b6d12226db02f8c1c38e5040f4dfb2c726d440596e78d0f34e5bcbbba799f3f
+else
+  echo sha256:8994a430baed23020a755a9997c40323225a43d3fe6c6f930954005311491597
+fi
+EOF
+for command in wireguard-go wg-quick docker; do
   cp "$TMP/bin/wg" "$TMP/bin/$command"
 done
 chmod +x "$TMP/bin/"*
