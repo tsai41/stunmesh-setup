@@ -1,9 +1,8 @@
 #!/usr/bin/env bash
-# stop.sh — stop stunmesh-go + WireGuard + dhtnode if the fallback ran (container kept for next start)
+# stop.sh — stop stunmesh-go + WireGuard. Local Docker DHT is managed explicitly.
 set -euo pipefail
 cd "$(dirname "$0")/.."
 . ./scripts/lib.sh
-. ./scripts/dht.sh
 
 ERRORS=0
 
@@ -23,8 +22,6 @@ if _wg_running; then
 else
   echo "    not running"
 fi
-
-_dht_down || ERRORS=1
 
 if (( ERRORS )); then
   echo "✗ Stop completed with errors" >&2

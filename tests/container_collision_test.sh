@@ -28,17 +28,12 @@ chmod +x "$TMP/repo/state/stunmesh-go"
 
 cat > "$TMP/bin/docker" <<EOF
 #!/usr/bin/env bash
-case "\${1:-} \${2:-}" in
-  'info ') exit 0 ;;
-  'ps -a') echo dhtnode ;;
-  'inspect -f') echo another-project ;;
-  'rm -f') touch "$TMP/foreign-container-removed"; exit 1 ;;
-  *) exit 0 ;;
-esac
+touch "$TMP/docker-called"
+exit 1
 EOF
 chmod +x "$TMP/bin/docker"
 
-# public proxy must look down so start reaches the docker fallback
+# public proxy is down; start must leave an unrelated Docker container alone.
 cat > "$TMP/bin/curl" <<'EOF'
 #!/usr/bin/env bash
 echo '{"ipv4":{"good":0}}'
@@ -55,14 +50,11 @@ OUTPUT="$(PATH="$TMP/bin:/usr/bin:/bin" bash "$TMP/repo/scripts/start.sh" 2>&1)"
 STATUS=$?
 set -e
 
-(( STATUS != 0 )) || { echo "expected start to refuse a foreign dhtnode container" >&2; exit 1; }
-[[ "$OUTPUT" == *"belongs to another Docker project"* ]] || {
-  echo "expected an actionable collision error, got: $OUTPUT" >&2
+(( STATUS != 0 )) || { echo "expected start to fail with unavailable public DHT" >&2; exit 1; }
+[[ "$OUTPUT" == *"DHT endpoint unavailable"* ]] || {
+  echo "expected a DHT error, got: $OUTPUT" >&2
   exit 1
 }
-[[ ! -e "$TMP/foreign-container-removed" ]] || {
-  echo "start removed a foreign dhtnode container" >&2
-  exit 1
-}
+[[ ! -e "$TMP/docker-called" ]] || { echo "start inspected an unrelated Docker container" >&2; exit 1; }
 
-echo "ok: start refuses to remove a foreign dhtnode container"
+echo "ok: start does not touch Docker when the public DHT is unavailable"

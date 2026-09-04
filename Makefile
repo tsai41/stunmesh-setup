@@ -3,7 +3,7 @@
 #   make setup NODE=B PEER_KEY=<the key node A printed>
 #   make start / stop / status / logs
 
-.PHONY: setup update start stop restart status logs next key ssh proxy ssh-setup ssh-teardown add-peer remove-peer peers list-peers check test
+.PHONY: setup update start stop restart status logs next key ssh proxy ssh-setup ssh-teardown add-peer remove-peer peers list-peers dht-local-up dht-local-down dht-use-local dht-use-public launchd-install launchd-uninstall launchd-status launchd-restart check test
 
 next:
 	@./scripts/next.sh
@@ -28,6 +28,32 @@ status:
 
 logs:
 	tail -f state/stunmesh.log
+
+# macOS only: install a root LaunchDaemon for boot-time tunnel startup.
+launchd-install:
+	@sudo ./scripts/launchd-install.sh install "$(CURDIR)" "$(shell id -un)"
+
+launchd-uninstall:
+	@sudo ./scripts/launchd-install.sh uninstall
+
+launchd-status:
+	@./scripts/launchd-install.sh status
+
+launchd-restart:
+	@sudo ./scripts/launchd-install.sh restart
+
+# Docker is an explicit local-DHT option; make start never manages it.
+dht-local-up:
+	@./scripts/dht-local.sh up
+
+dht-local-down:
+	@./scripts/dht-local.sh down
+
+dht-use-local:
+	@./scripts/dht-mode.sh local
+
+dht-use-public:
+	@./scripts/dht-mode.sh public
 
 # print this machine's public key, for pasting into the other node's setup/add-peer
 key:

@@ -5,7 +5,9 @@ cd "$(dirname "$0")/.."
 . ./scripts/lib.sh
 . ./scripts/dht.sh
 
-echo "dht public:  good $(_dht_good "$DHT_PUBLIC_ENDPOINT") ($DHT_PUBLIC_ENDPOINT)"
+_load_settings || true
+DHT_ENDPOINT="${DHT_ENDPOINT:-$DHT_PUBLIC_ENDPOINT}"
+echo "dht selected: good $(_dht_good "$DHT_ENDPOINT") ($DHT_ENDPOINT)"
 
 if STATUS="$(docker ps --filter 'name=^/dhtnode$' --format '{{.Status}}' 2>/dev/null)" && [[ -n "$STATUS" ]]; then
   echo "dhtnode:     $STATUS (good $(_dht_good "$DHT_LOCAL_ENDPOINT"))"
@@ -21,7 +23,6 @@ fi
 
 # who this node is configured to reach, with the live handshake age when wg can
 # tell us for free. keys are 44 chars of noise here — `make peers` prints those
-_load_settings || true
 if [[ "$(_peer_count)" != "0" ]]; then
   HANDSHAKES="$(_wg_handshakes)"
   SUMMARY=""

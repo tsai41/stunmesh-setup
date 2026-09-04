@@ -32,25 +32,15 @@ cat > "$TMP/bin/uname" <<'EOF'
 #!/usr/bin/env bash
 echo Linux
 EOF
+# The normal lifecycle uses the public DHT and does not manage Docker.
 cat > "$TMP/bin/docker" <<EOF
 #!/usr/bin/env bash
 printf 'docker %s\n' "\$*" >> "$TMP/actions"
-case "\${1:-} \${2:-}" in
-  'info '|'compose up') exit 0 ;;
-  'ps -a') exit 0 ;;
-  *) exit 0 ;;
-esac
+exit 1
 EOF
-# public proxy down, local dhtnode healthy — forces the docker fallback path
 cat > "$TMP/bin/curl" <<'EOF'
 #!/usr/bin/env bash
-for a in "$@"; do
-  case "$a" in
-    *dhtproxy3*) echo '{"ipv4":{"good":0}}'; exit 0 ;;
-    *127.0.0.1*) echo '{"ipv4":{"good":1}}'; exit 0 ;;
-  esac
-done
-echo '{"ipv4":{"good":0}}'
+echo '{"ipv4":{"good":1}}'
 EOF
 cat > "$TMP/bin/jq" <<'EOF'
 #!/usr/bin/env bash
@@ -81,7 +71,10 @@ START_STATUS=$?
 set -e
 (( START_STATUS != 0 )) || { echo "start reported success after stunmesh-go exited: $START_OUTPUT" >&2; exit 1; }
 grep -q '^wg-quick down ' "$TMP/actions" || { echo "start failure did not roll back WireGuard" >&2; exit 1; }
-grep -q '^docker compose stop' "$TMP/actions" || { echo "start failure did not roll back DHT" >&2; exit 1; }
+if grep -q '^docker ' "$TMP/actions"; then
+  echo "normal lifecycle must not touch Docker" >&2
+  exit 1
+fi
 
 : > "$TMP/actions"
 printf '12345\n' > "$TMP/repo/state/stunmesh.pid"
@@ -95,30 +88,5 @@ PATH="$TMP/bin:/usr/bin:/bin" bash "$TMP/repo/scripts/stop.sh" >/dev/null 2>&1
 STOP_STATUS=$?
 set -e
 (( STOP_STATUS != 0 )) || { echo "stop should report the failed kill" >&2; exit 1; }
-grep -q '^docker ps ' "$TMP/actions" || { echo "stop abandoned remaining cleanup after kill failed" >&2; exit 1; }
 
-# fallback container running, docker healthy — stop must stop it and succeed
-: > "$TMP/actions"
-rm -f "$TMP/repo/state/stunmesh.pid"
-cat > "$TMP/bin/docker" <<EOF
-#!/usr/bin/env bash
-printf 'docker %s\n' "\$*" >> "$TMP/actions"
-if [[ "\${1:-}" == ps ]]; then echo dhtnode; fi
-exit 0
-EOF
-chmod +x "$TMP/bin/docker"
-PATH="$TMP/bin:/usr/bin:/bin" bash "$TMP/repo/scripts/stop.sh" >/dev/null 2>&1 \
-  || { echo "stop failed with a running dhtnode" >&2; exit 1; }
-grep -q '^docker compose stop' "$TMP/actions" || { echo "stop did not stop the running dhtnode" >&2; exit 1; }
-
-# docker present but daemon unreachable — stop must warn yet still succeed
-cat > "$TMP/bin/docker" <<'EOF'
-#!/usr/bin/env bash
-exit 1
-EOF
-chmod +x "$TMP/bin/docker"
-OUTPUT="$(PATH="$TMP/bin:/usr/bin:/bin" bash "$TMP/repo/scripts/stop.sh" 2>&1)" \
-  || { echo "stop failed when docker daemon is down: $OUTPUT" >&2; exit 1; }
-[[ "$OUTPUT" == *'cannot inspect docker'* ]] || { echo "missing daemon-down warning: $OUTPUT" >&2; exit 1; }
-
-echo "ok: lifecycle verifies startup, rolls back, and performs best-effort stop"
+echo "ok: lifecycle verifies startup and rollback without Docker"

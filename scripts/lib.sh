@@ -22,7 +22,7 @@ _valid_ipv4() {
 }
 
 # settings.env schema — a new setting is added here and nowhere else
-SETTINGS_VARS=(NODE SELF_IP PEER_IP PEER_KEY PEER_SSH_USER)
+SETTINGS_VARS=(NODE SELF_IP PEER_IP PEER_KEY PEER_SSH_USER DHT_ENDPOINT)
 
 # clear every setting: an exported PEER_IP must never stand in for a missing
 # settings.env, and `make ssh PEER_IP=...` does put one in the recipe environment

@@ -5,6 +5,13 @@ cd "$(dirname "$0")/.."
 . ./scripts/lib.sh
 . ./scripts/dht.sh
 
+FOREGROUND=0
+if [[ "${1:-}" == "--foreground" ]]; then
+  FOREGROUND=1
+  shift
+fi
+[[ $# -eq 0 ]] || { echo "Usage: $0 [--foreground]" >&2; exit 2; }
+
 [[ -f "$STATE/settings.env" ]] || { echo "✗ Run make setup first" >&2; exit 1; }
 _load_settings
 [[ -x "$STATE/stunmesh-go" ]] || { echo "✗ stunmesh-go missing or not executable; run make setup" >&2; exit 1; }
@@ -44,10 +51,16 @@ _rollback_start() {
   if (( WG_STARTED )); then
     sudo env PATH="$PATH" wg-quick down "$PWD/$WG_CONF" >/dev/null 2>&1
   fi
-  _dht_rollback
   return "$status"
 }
 trap _rollback_start EXIT
+
+_restore_config_owner() {
+  local owner="${STUNMESH_STATE_OWNER:-}"
+  [[ "${EUID}" -eq 0 && -n "$owner" && -f "$STATE/config.yaml" ]] || return 0
+  id "$owner" >/dev/null 2>&1 || return 0
+  chown "$owner" "$STATE/config.yaml"
+}
 
 _dht_up
 
@@ -109,12 +122,21 @@ plugins:
     dedup: false
 EOF
 fi
+_restore_config_owner
 
 echo "==> stunmesh-go"
 if PID="$(_stunmesh_pid)"; then
+  if (( FOREGROUND )); then
+    echo "✗ stunmesh-go is already running (pid $PID); refusing a second supervisor" >&2
+    exit 1
+  fi
   echo "    already running (pid $PID), skipping"
 else
   # stunmesh-go reads config.yaml from cwd, so run inside state/
+  if (( FOREGROUND )); then
+    sudo bash -c 'cd "$1" || exit 1; echo $$ > stunmesh.pid; exec ./stunmesh-go >> stunmesh.log 2>&1' bash "$PWD/$STATE"
+    exit $?
+  fi
   sudo bash -c 'cd "$1" || exit 1; nohup ./stunmesh-go >> stunmesh.log 2>&1 & echo $! > stunmesh.pid' bash "$PWD/$STATE"
   STUN_STARTED=1
   PID=""

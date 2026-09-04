@@ -4,17 +4,11 @@
 
 ## This machine — `make start` and local state
 
-**`make start` fails at "DHT bootstrap failed".** The public proxy was unreachable and the fallback dhtnode found no DHT peers. Usually outbound UDP to `bootstrap.jami.net:4222` is blocked, or the machine has no working network yet.
+**`make start` says "DHT endpoint unavailable".** The selected DHT endpoint is not reachable. The default is the public Jami proxy, so check the network and retry. Docker is never started automatically; if you deliberately selected the local endpoint, start it with `make dht-local-up`, or return to the default with `make dht-use-public`.
 
 **Both machines are running but ping never succeeds.** Punching takes 1-2 minutes after the *second* machine starts; wait before digging. If it stays down, check `state/stunmesh.log` on both sides — the endpoint each side published must be a public IP:port. If both machines sit behind symmetric NAT, hole punching cannot work at all (upstream limitation); one side needs a different network.
 
-**`make start` refuses to touch an existing `dhtnode` container.** You previously ran a manual setup that used `docker run --name dhtnode`. The scripts never delete a container they did not create. Inspect it, and remove it only after confirming it is the old one:
-
-```bash
-docker inspect dhtnode
-docker rm -f dhtnode      # only after confirming it is safe to remove
-make start
-```
+**The local `dhtnode` does not start.** It is an explicit Docker option, so inspect it separately with `docker compose logs dhtnode`; it is not managed by `make start` or `make stop`.
 
 **A leftover tunnel from a manual setup.** An older hand-rolled `wg0.conf` uses a different interface name and IP range, so it will not collide, but having two tunnels up makes it unclear which one carries traffic. Take it down first: `sudo wg-quick down /path/to/wg0.conf`.
 

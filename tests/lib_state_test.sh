@@ -24,6 +24,7 @@ SELF_IP=10.66.0.1
 PEER_IP=10.66.0.2
 PEER_KEY=BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB=
 PEER_SSH_USER="peer-login"
+DHT_ENDPOINT=""
 _save_settings
 
 EXPECTED="$(printf '%s\n' \
@@ -31,18 +32,19 @@ EXPECTED="$(printf '%s\n' \
   'SELF_IP=10.66.0.1' \
   'PEER_IP=10.66.0.2' \
   'PEER_KEY=BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB=' \
-  'PEER_SSH_USER=peer-login')"
+  'PEER_SSH_USER=peer-login' \
+  'DHT_ENDPOINT=')"
 ACTUAL="$(cat state/settings.env)"
 [[ "$ACTUAL" == "$EXPECTED" ]] || { echo "shared settings writer produced unexpected content" >&2; exit 1; }
 
 # a fresh shell must read every setting back, so a re-run can reuse them.
 # PEER_KEY matters most: it ends in '=', so splitting on the last one loses it.
 (
-  unset NODE SELF_IP PEER_IP PEER_KEY PEER_SSH_USER
+  unset NODE SELF_IP PEER_IP PEER_KEY PEER_SSH_USER DHT_ENDPOINT
   _load_settings
   [[ "$NODE" == "A" && "$SELF_IP" == "10.66.0.1" && "$PEER_IP" == "10.66.0.2" \
      && "$PEER_KEY" == "BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB=" \
-     && "$PEER_SSH_USER" == "peer-login" ]] \
+     && "$PEER_SSH_USER" == "peer-login" && -z "$DHT_ENDPOINT" ]] \
     || { echo "_load_settings did not restore the saved settings" >&2; exit 1; }
 )
 

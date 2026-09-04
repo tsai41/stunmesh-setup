@@ -41,9 +41,14 @@ else
   echo sha256:8994a430baed23020a755a9997c40323225a43d3fe6c6f930954005311491597
 fi
 EOF
-for command in wireguard-go wg-quick docker; do
+for command in wireguard-go wg-quick; do
   cp "$TMP/bin/wg" "$TMP/bin/$command"
 done
+cat > "$TMP/bin/docker" <<EOF
+#!/usr/bin/env bash
+touch "$TMP/docker-called"
+exit 1
+EOF
 chmod +x "$TMP/bin/"*
 
 cat > "$TMP/run.exp" <<'EOF'
@@ -64,5 +69,6 @@ if ! grep -qx 'PEER_SSH_USER=peer-login' "$TMP/repo/state/settings.env"; then
   echo "expected setup to save the prompted peer SSH user" >&2
   exit 1
 fi
+[[ ! -e "$TMP/docker-called" ]] || { echo "setup must not probe or pull the optional Docker DHT" >&2; exit 1; }
 
-echo "ok: setup saves the prompted peer SSH user"
+echo "ok: setup saves the prompted peer SSH user without touching Docker"

@@ -10,7 +10,7 @@ Scripts only check and print install hints — they never install anything.
 
 - **macOS**: `wireguard-go`, `wireguard-tools`, `jq` via [Homebrew](https://brew.sh)
 - **Linux**: kernel >= 5.6 (older needs wireguard-dkms), `wireguard-tools`, `jq`, `curl`, `sha256sum`
-- **Optional**: Docker with the compose plugin — only for the local DHT fallback when the public proxy is unreachable
+- **Optional**: Docker with the compose plugin — only if you explicitly choose the bundled local DHT
 
 **Two hard limits:** App Store WireGuard is sandboxed and unsupported (same as upstream); and if both machines sit behind symmetric NAT, hole punching cannot work at all — one side needs a different network.
 
@@ -40,6 +40,26 @@ ping 10.66.0.2   # from A; B pings 10.66.0.1; ~1-2 min to punch through
 
 **Both machines must be started and stay started** — the tunnel is a direct link with no relay, so `make stop` on either side drops it for both. `make start` verifies stunmesh-go stays alive before reporting success, and rolls back only what that run started if a stage fails.
 
+### macOS: start automatically at boot
+
+After setup has completed and a peer key is configured, install the macOS-only
+`LaunchDaemon` from this repo:
+
+```bash
+make launchd-install       # asks for sudo once; starts now and at future boots
+make launchd-status
+```
+
+It runs as root so it can create the WireGuard interface without an interactive
+password prompt, and restarts after an unexpected exit. To disable it:
+
+```bash
+make launchd-uninstall
+```
+
+See [docs/macos-launchd.md](docs/macos-launchd.md) for logs, lifecycle, and
+the effect of sleep.
+
 ## After it's up
 
 ```bash
@@ -57,6 +77,8 @@ make next         # the single next step for the current state
 
 - **Connect to more than one machine** — make this node a hub with `make add-peer` / `remove-peer` / `peers`. See [docs/hub.md](docs/hub.md).
 
+- **Use a local DHT deliberately** — the public Jami proxy is the default. Docker is never started automatically: `make dht-local-up`, then `make dht-use-local`. Return to the public default with `make dht-use-public`.
+
 Scripts also run directly, e.g. `./scripts/setup.sh --node A`.
 
 ## Documentation
@@ -65,7 +87,8 @@ All under [`docs/`](docs/) — see its [index](docs/README.md) for the same list
 
 | Doc | What |
 |---|---|
-| [how-it-works.md](docs/how-it-works.md) | Endpoint exchange, DHT probe/fallback, trust model, invariants |
+| [how-it-works.md](docs/how-it-works.md) | Endpoint exchange, public/default and local/opt-in DHT, trust model, invariants |
+| [macos-launchd.md](docs/macos-launchd.md) | macOS boot-time background service |
 | [hub.md](docs/hub.md) | Connect this machine to more than one node (add/remove/list peers) |
 | [state-files.md](docs/state-files.md) | What each `state/` file is, which are secret, what's hand-editable |
 | [proxy.md](docs/proxy.md) | Browse the peer's LAN over a SOCKS5 proxy |

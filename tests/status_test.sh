@@ -41,7 +41,7 @@ fi
 
 OUTPUT="$(PATH="$TMP/bin:/usr/bin:/bin" bash "$TMP/repo/scripts/status.sh")"
 [[ "$OUTPUT" == *'dhtnode:     Up 1 minute (good 3)'* ]] || { echo "missing DHT status: $OUTPUT" >&2; exit 1; }
-[[ "$OUTPUT" == *'dht public:  good 3'* ]] || { echo "missing public DHT health: $OUTPUT" >&2; exit 1; }
+[[ "$OUTPUT" == *'dht selected: good 3'* ]] || { echo "missing selected DHT health: $OUTPUT" >&2; exit 1; }
 [[ "$OUTPUT" == *'wireguard:   not running'* ]] || { echo "missing WireGuard status: $OUTPUT" >&2; exit 1; }
 [[ "$OUTPUT" == *'stunmesh-go: not running'* ]] || { echo "stale pidfile was reported as running: $OUTPUT" >&2; exit 1; }
 

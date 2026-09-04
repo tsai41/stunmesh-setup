@@ -30,7 +30,7 @@ cat > "$TMP/bin/uname" <<'EOF'
 #!/usr/bin/env bash
 echo Linux
 EOF
-# every DHT proxy looks dead — public probe and local bootstrap both report good=0
+# The selected public endpoint is unavailable.
 cat > "$TMP/bin/curl" <<'EOF'
 #!/usr/bin/env bash
 echo '{"ipv4":{"good":0}}'
@@ -46,9 +46,10 @@ exit 0
 EOF
 chmod +x "$TMP/bin/"*
 
-# public down + docker daemon down: start must fail before touching compose
-cat > "$TMP/bin/docker" <<'EOF'
+# Docker must not be touched; it is now an explicit candidate, not a fallback.
+cat > "$TMP/bin/docker" <<EOF
 #!/usr/bin/env bash
+touch "$TMP/docker-called"
 exit 1
 EOF
 chmod +x "$TMP/bin/docker"
@@ -57,26 +58,10 @@ OUTPUT="$(PATH="$TMP/bin:/usr/bin:/bin" bash "$TMP/repo/scripts/start.sh" 2>&1)"
 STATUS=$?
 set -e
 (( STATUS != 0 )) || { echo "start succeeded with no DHT available: $OUTPUT" >&2; exit 1; }
-[[ "$OUTPUT" == *'Docker daemon not running'* ]] || {
-  echo "expected a no-DHT error naming the docker fallback, got: $OUTPUT" >&2
+[[ "$OUTPUT" == *'DHT endpoint unavailable'* ]] || {
+  echo "expected a selected-endpoint error, got: $OUTPUT" >&2
   exit 1
 }
+[[ ! -e "$TMP/docker-called" ]] || { echo "start must not invoke Docker" >&2; exit 1; }
 
-# public down, docker fine, bootstrap never becomes healthy: fail + roll back the container
-cat > "$TMP/bin/docker" <<EOF
-#!/usr/bin/env bash
-printf 'docker %s\n' "\$*" >> "$TMP/actions"
-exit 0
-EOF
-chmod +x "$TMP/bin/docker"
-: > "$TMP/actions"
-set +e
-OUTPUT="$(PATH="$TMP/bin:/usr/bin:/bin" bash "$TMP/repo/scripts/start.sh" 2>&1)"
-STATUS=$?
-set -e
-(( STATUS != 0 )) || { echo "start succeeded despite bootstrap timeout: $OUTPUT" >&2; exit 1; }
-[[ "$OUTPUT" == *'DHT bootstrap failed'* ]] || { echo "expected bootstrap failure, got: $OUTPUT" >&2; exit 1; }
-grep -q '^docker compose up' "$TMP/actions" || { echo "fallback never started the container" >&2; exit 1; }
-grep -q '^docker compose stop' "$TMP/actions" || { echo "bootstrap timeout did not roll back the container" >&2; exit 1; }
-
-echo "ok: DHT fallback fails cleanly without docker and rolls back on bootstrap timeout"
+echo "ok: unavailable public DHT fails cleanly without touching Docker"

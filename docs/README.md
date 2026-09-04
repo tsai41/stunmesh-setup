@@ -4,7 +4,8 @@ Setup and first-run live in the [root README](../README.md); these are the deepe
 
 ### Understand it
 
-- [how-it-works.md](how-it-works.md) — how endpoints are exchanged over the DHT, the public-proxy probe and docker fallback, the trust model, and the invariants (`dedup: false`, `utunX` renaming, sleep) worth knowing.
+- [how-it-works.md](how-it-works.md) — how endpoints are exchanged over the DHT, the public default and opt-in local Docker option, the trust model, and the invariants (`dedup: false`, `utunX` renaming, sleep) worth knowing.
+- [macos-launchd.md](macos-launchd.md) — macOS-only boot-time background service.
 
 ### Do a task
 

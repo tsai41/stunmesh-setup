@@ -8,24 +8,30 @@ Endpoint exchange is the core problem of peer-to-peer: each side must learn the 
 
 ## Picking the DHT endpoint
 
-`make start` probes the public proxy first; when it is unreachable, it falls back to a local `dhtnode` (docker compose, see [`compose.yaml`](../compose.yaml); REST proxy bound to loopback only), bootstrapped to `bootstrap.jami.net:4222`. This is the only place docker enters the picture.
+`make start` uses the public proxy by default. It never starts Docker or changes
+the selected endpoint automatically. If you want to use the bundled local
+`dhtnode` instead (Docker Compose; REST proxy bound to loopback only), choose it
+explicitly:
 
 ```mermaid
 flowchart LR
-    A[make start] --> B{probe dhtproxy3.jami.net}
-    B -- reachable --> C[use the public proxy<br/>docker never touched]
-    B -- unreachable --> D{docker available?}
-    D -- yes --> E[start local dhtnode container<br/>config endpoint rewritten to 127.0.0.1:8080]
-    D -- no --> F[fail: DHT bootstrap failed]
+    A[make start] --> B[use selected endpoint]
+    B --> C[default: public Jami proxy]
+    D[make dht-local-up] --> E[local dhtnode]
+    E --> F[make dht-use-local]
+    F --> B
 ```
 
-Whichever side wins, the `endpoint:` line in `state/config.yaml` is re-pointed to match on every start — with one exception: a custom endpoint you set by hand is left untouched.
+`make dht-use-local` persists `http://127.0.0.1:8080` in `state/settings.env`,
+so the choice also applies to the macOS boot service. Use `make dht-use-public`
+to restore the Jami endpoint. A custom endpoint written by hand in
+`state/config.yaml` is still left untouched.
 
 ## Trusting the public proxy
 
 `dhtproxy3.jami.net` is the Jami project's public OpenDHT REST proxy. It sees your source IP and the DHT keys you read and write, but never the endpoints themselves — every value is Curve25519-encrypted for the peer, so neither the proxy nor anyone else on the DHT can decrypt it. To keep even that metadata away from a third party, run your own `dhtnode` (the [`compose.yaml`](../compose.yaml) here works on any docker host) and hand-edit `endpoint:` to point at it — custom endpoints are never rewritten by `start`.
 
-The fallback OpenDHT container is pinned to the official `v4.1.1` multi-architecture image digest, so both machines run the same immutable image.
+The optional OpenDHT container is pinned to the official `v4.1.1` multi-architecture image digest, so both machines run the same immutable image.
 
 ## Invariants worth knowing
 
