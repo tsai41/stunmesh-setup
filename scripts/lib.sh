@@ -85,7 +85,8 @@ _peer_count() { _all_peers | grep -c . || true ; }
 
 # look up one field of one peer by name; <name> <col: 2=key 3=ip 4=ssh_user>
 _peer_field() {
-  _all_peers | awk -F'\t' -v n="$1" -v c="$2" '$1 == n { print $c; exit }'
+  # no early exit: closing the pipe early SIGPIPEs _all_peers and pipefail aborts the caller
+  _all_peers | awk -F'\t' -v n="$1" -v c="$2" '$1 == n && !found { print $c; found = 1 }'
 }
 
 # render state/stunmesh0.conf for every configured peer. >1 peer uses /32 so the

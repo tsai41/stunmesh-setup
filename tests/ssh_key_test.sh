@@ -166,4 +166,20 @@ grep -q 'aphone  (10.66.0.4)' "$TMP/out" || fail "multi-peer list missing"
 run key --peer mac </dev/null >"$TMP/out" 2>&1 || fail "ssh-key PEER=mac failed"
 grep -q 'ssh-copy-id .* dave@10.66.0.3' "$STUB_LOG" || fail "PEER=mac not used"
 
+# without a terminal, make ssh keeps defaulting to the first peer
+: > "$STUB_LOG"
+run connect </dev/null >"$TMP/out" 2>&1 || fail "multi-peer connect failed"
+grep -q "using 'aphone'" "$TMP/out" || fail "connect lost the first-peer default"
+grep -q '@10.66.0.4' "$STUB_LOG" || fail "connect did not use the first peer"
+
+# in a terminal with fzf, the picked peer wins (script(1) supplies the tty)
+cat > "$TMP/bin/fzf" <<'EOF'
+#!/usr/bin/env bash
+grep '^mac'
+EOF
+chmod +x "$TMP/bin/fzf"
+: > "$STUB_LOG"
+(cd "$TMP/repo" && script -q /dev/null bash scripts/ssh.sh connect) >"$TMP/out" 2>&1 </dev/null || fail "fzf connect failed"
+grep -q 'dave@10.66.0.3' "$STUB_LOG" || fail "fzf choice not used by connect"
+
 echo "ok: ssh-key reuses keys, refuses non-macOS, writes key lines, persists USER, preflights before keygen, prints blob revoke hint, needs PEER on a hub"
