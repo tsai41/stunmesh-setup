@@ -47,10 +47,11 @@ Removing the last extra peer leaves a single peer, which reverts to the /24
 
 ## Reach a specific peer
 
-With several peers configured, `make ssh` / `make proxy` / `make ssh-key`
-open an [fzf](https://github.com/junegunn/fzf) picker when run in a terminal
-with fzf installed. Without fzf, `make ssh` / `make proxy` use the first peer
-and `make ssh-key` stops and lists the peers. Name one directly:
+With several peers configured, `make ssh` / `make proxy` / `make ssh-setup` /
+`make ssh-key` open an [fzf](https://github.com/junegunn/fzf) picker when run
+in a terminal with fzf installed. Without fzf, `make ssh` / `make proxy` /
+`make ssh-setup` use the first peer and `make ssh-key` stops and lists the
+peers. Name one directly:
 
 ```bash
 make ssh PEER=c

@@ -181,5 +181,7 @@ chmod +x "$TMP/bin/fzf"
 : > "$STUB_LOG"
 (cd "$TMP/repo" && script -q /dev/null bash scripts/ssh.sh connect) >"$TMP/out" 2>&1 </dev/null || fail "fzf connect failed"
 grep -q 'dave@10.66.0.3' "$STUB_LOG" || fail "fzf choice not used by connect"
+(cd "$TMP/repo" && script -q /dev/null bash scripts/ssh.sh setup) >"$TMP/out" 2>&1 </dev/null || fail "fzf setup failed"
+grep -qx '    HostName 10.66.0.3' "$CONF" || fail "fzf choice not used by ssh-setup"
 
 echo "ok: ssh-key reuses keys, refuses non-macOS, writes key lines, persists USER, preflights before keygen, prints blob revoke hint, needs PEER on a hub"

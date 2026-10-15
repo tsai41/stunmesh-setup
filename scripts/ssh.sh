@@ -39,7 +39,7 @@ done
 _load_settings
 
 # hub use-case: pick which peer to reach. an explicit PEER wins; with several
-# peers and no PEER, ssh/proxy/key let the user pick with fzf in a terminal.
+# peers and no PEER, ssh/proxy/setup/key let the user pick with fzf in a terminal.
 # without fzf, key refuses (the first peer may be a phone with no sshd) and the
 # rest default to the first. a lone/legacy peer keeps settings.env.
 # PEER_FROM_STORE stops _save_user writing a store peer's user back to settings.
@@ -53,7 +53,7 @@ if [[ -n "$PEER_ARG" ]]; then
   PEER_FROM_STORE=1
 elif (( $(_peer_count) > 1 )); then
   _pname=""
-  if [[ "$ACTION" =~ ^(connect|proxy|key)$ && -t 0 && -t 2 ]] && command -v fzf >/dev/null 2>&1; then
+  if [[ "$ACTION" =~ ^(connect|proxy|setup|key)$ && -t 0 && -t 2 ]] && command -v fzf >/dev/null 2>&1; then
     _pname="$(_all_peers | awk -F'\t' '{ print $1 "\t" $3 }' |
       fzf --prompt='peer> ' --delimiter='\t' --height=10 | cut -f1)" || true
     [[ -n "$_pname" ]] || { echo "✗ No peer chosen" >&2; exit 1; }
