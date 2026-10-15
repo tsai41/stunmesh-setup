@@ -152,6 +152,8 @@ _preflight_ssh_conf() {
 _write_ssh_conf() {
   ALIASES="$FIXED_ALIAS"
   [[ -n "$HOST_ALIAS" && "$HOST_ALIAS" != "$FIXED_ALIAS" ]] && ALIASES="$HOST_ALIAS $FIXED_ALIAS"
+  # make ssh connects by user@IP, which only picks up the key lines if the IP matches too
+  [[ "$SSH_KEY_AUTH" == "1" ]] && ALIASES="$ALIASES $PEER_IP"
   cat > "$MANAGED_CONF" <<EOF
 Host $ALIASES
     HostName $PEER_IP
@@ -253,7 +255,7 @@ case "$ACTION" in
 
     # keep a custom alias from an earlier ssh-setup HOST=<alias>
     if [[ -z "$HOST_ALIAS" && -f "$MANAGED_CONF" ]]; then
-      HOST_ALIAS="$(awk -v f="$FIXED_ALIAS" '$1 == "Host" { for (i = 2; i <= NF; i++) if ($i != f) { print $i; exit } }' "$MANAGED_CONF")"
+      HOST_ALIAS="$(awk -v f="$FIXED_ALIAS" '$1 == "Host" { for (i = 2; i <= NF; i++) if ($i != f && $i !~ /^[0-9.]+$/) { print $i; exit } }' "$MANAGED_CONF")"
     fi
     _preflight_ssh_conf
 

@@ -91,6 +91,7 @@ for line in "IdentitiesOnly yes" "AddKeysToAgent yes" "IgnoreUnknown UseKeychain
 done
 grep -qx 'SSH_KEY_AUTH=1' "$TMP/repo/state/settings.env" || fail "flag not persisted"
 grep -qx 'PEER_IP=10.66.0.2' "$TMP/repo/state/settings.env" || fail "settings clobbered"
+grep -qx 'Host stunmesh-peer 10.66.0.2' "$CONF" || fail "Host line lacks the peer IP for make ssh"
 IGN="$(grep -n 'IgnoreUnknown UseKeychain' "$CONF" | cut -d: -f1)"
 USEK="$(grep -n 'UseKeychain yes' "$CONF" | cut -d: -f1)"
 (( IGN < USEK )) || fail "IgnoreUnknown must precede UseKeychain"
@@ -99,6 +100,7 @@ echo "PRIVATE-EXISTING" > "$KEY"
 : > "$STUB_LOG"
 run key >"$TMP/out" 2>&1 || fail "second run failed"
 grep -qx 'PRIVATE-EXISTING' "$KEY" || fail "existing key overwritten"
+grep -qx 'Host stunmesh-peer 10.66.0.2' "$CONF" || fail "re-run took the peer IP for a custom alias"
 ! grep -q '^ssh-keygen -t' "$STUB_LOG" || fail "ssh-keygen generated over an existing key"
 ! grep -q -e '-N' "$STUB_LOG" || fail "passphrase must not be passed to ssh-keygen"
 
