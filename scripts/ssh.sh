@@ -4,8 +4,10 @@
 #   proxy     SOCKS5 proxy on 127.0.0.1:<port> through the peer (ssh -D)
 #   setup     write state/ssh.conf + one Include line at the top of ~/.ssh/config
 #   teardown  remove that Include line again
+#   key       macOS only: key-based login to the peer (keygen, Keychain, ssh-copy-id)
 # Usage: make ssh [USER=<name>] / make proxy [PROXY_PORT=<port>] [USER=<name>]
 #        make ssh-setup [HOST=<alias>] [USER=<name>] / make ssh-teardown
+#        make ssh-key [PEER=<name>] [USER=<name>]
 set -euo pipefail
 cd "$(dirname "$0")/.."
 . ./scripts/lib.sh
@@ -15,6 +17,8 @@ SSH_CONFIG="$SSH_DIR/config"
 MANAGED_CONF="$STATE/ssh.conf"
 MARKER="# stunmesh-setup managed block (remove: make ssh-teardown)"
 FIXED_ALIAS="stunmesh-peer"
+KEY_FILE="$SSH_DIR/id_ed25519_stunmesh"
+SSH_ADD_BIN="${SSH_ADD_BIN:-/usr/bin/ssh-add}"
 
 ACTION="${1:-connect}"
 [[ $# -gt 0 ]] && shift
@@ -104,6 +108,78 @@ if [[ -n "$USER_ARG" ]] && ! _valid_name "$USER_ARG"; then
 fi
 SSH_USER="${USER_ARG:-${PEER_SSH_USER:-$(id -un)}}"
 
+# checks that must pass before anything is written, so a failure leaves nothing behind
+_preflight_ssh_conf() {
+  _require_peer_ip
+  # Include needs OpenSSH >= 7.3; check-only, like the dependency preflight
+  VER="$(ssh -V 2>&1 | sed -nE 's/^OpenSSH_([0-9]+)\.([0-9]+).*/\1 \2/p')"
+  if [[ -n "$VER" ]]; then
+    read -r MAJ MIN <<< "$VER"
+    if (( MAJ < 7 || (MAJ == 7 && MIN < 3) )); then
+      echo "✗ OpenSSH $MAJ.$MIN lacks Include support (needs >= 7.3); upgrade ssh or use make ssh directly" >&2
+      exit 1
+    fi
+  fi
+  if [[ -n "$HOST_ALIAS" ]] && ! _valid_name "$HOST_ALIAS"; then
+    echo "✗ Invalid host alias: $HOST_ALIAS" >&2
+    exit 1
+  fi
+  _refuse_symlink
+
+  for ALIAS in ${HOST_ALIAS:+"$HOST_ALIAS"} "$FIXED_ALIAS"; do
+    if _alias_taken "$ALIAS"; then
+      echo "✗ Host alias '$ALIAS' already exists in $SSH_CONFIG — pick another: make ssh-setup HOST=<alias>" >&2
+      exit 1
+    fi
+  done
+}
+
+_write_ssh_conf() {
+  ALIASES="$FIXED_ALIAS"
+  [[ -n "$HOST_ALIAS" && "$HOST_ALIAS" != "$FIXED_ALIAS" ]] && ALIASES="$HOST_ALIAS $FIXED_ALIAS"
+  cat > "$MANAGED_CONF" <<EOF
+Host $ALIASES
+    HostName $PEER_IP
+    User $SSH_USER
+    ServerAliveInterval 25
+EOF
+  if [[ "$SSH_KEY_AUTH" == "1" ]]; then
+    cat >> "$MANAGED_CONF" <<EOF
+    IdentityFile $KEY_FILE
+    IdentitiesOnly yes
+    AddKeysToAgent yes
+    IgnoreUnknown UseKeychain
+    UseKeychain yes
+EOF
+  fi
+}
+
+_install_include() {
+  if [[ ! -d "$SSH_DIR" ]]; then
+    mkdir -p "$SSH_DIR"
+    chmod 700 "$SSH_DIR"
+  fi
+  [[ -f "$SSH_CONFIG" ]] || (umask 077 && : > "$SSH_CONFIG")
+
+  # ssh config does not expand ~ or $HOME reliably across versions; use the real path
+  INCLUDE_LINE="Include $(pwd -P)/$MANAGED_CONF"
+  MODE="$(_file_mode "$SSH_CONFIG")"
+  TMP="$(mktemp "${SSH_CONFIG}.XXXXXX")"
+  {
+    # marker + Include must sit at the very top: an Include below a Host/Match
+    # block would only apply inside that block
+    printf '%s\n%s\n' "$MARKER" "$INCLUDE_LINE"
+    _strip_managed "$SSH_CONFIG"
+  } > "$TMP"
+  chmod "$MODE" "$TMP"
+  mv "$TMP" "$SSH_CONFIG"
+
+  echo "✓ ssh config ready:"
+  echo "    ssh ${HOST_ALIAS:-$FIXED_ALIAS}        (${SSH_USER}@${PEER_IP})"
+  echo "  Wrote $MANAGED_CONF; added one Include line to $SSH_CONFIG."
+  echo "  IP or user changed later? Re-run make ssh-setup. Undo: make ssh-teardown"
+}
+
 case "$ACTION" in
   connect)
     _require_peer_ip
@@ -145,63 +221,84 @@ case "$ACTION" in
     ;;
 
   setup)
-    _require_peer_ip
-    # Include needs OpenSSH >= 7.3; check-only, like the dependency preflight
-    VER="$(ssh -V 2>&1 | sed -nE 's/^OpenSSH_([0-9]+)\.([0-9]+).*/\1 \2/p')"
-    if [[ -n "$VER" ]]; then
-      read -r MAJ MIN <<< "$VER"
-      if (( MAJ < 7 || (MAJ == 7 && MIN < 3) )); then
-        echo "✗ OpenSSH $MAJ.$MIN lacks Include support (needs >= 7.3); upgrade ssh or use make ssh directly" >&2
-        exit 1
-      fi
-    fi
-    if [[ -n "$HOST_ALIAS" ]] && ! _valid_name "$HOST_ALIAS"; then
-      echo "✗ Invalid host alias: $HOST_ALIAS" >&2
-      exit 1
-    fi
-    _refuse_symlink
-
-    for ALIAS in ${HOST_ALIAS:+"$HOST_ALIAS"} "$FIXED_ALIAS"; do
-      if _alias_taken "$ALIAS"; then
-        echo "✗ Host alias '$ALIAS' already exists in $SSH_CONFIG — pick another: make ssh-setup HOST=<alias>" >&2
-        exit 1
-      fi
-    done
-
-    ALIASES="$FIXED_ALIAS"
-    [[ -n "$HOST_ALIAS" && "$HOST_ALIAS" != "$FIXED_ALIAS" ]] && ALIASES="$HOST_ALIAS $FIXED_ALIAS"
-    cat > "$MANAGED_CONF" <<EOF
-Host $ALIASES
-    HostName $PEER_IP
-    User $SSH_USER
-    ServerAliveInterval 25
-EOF
+    _preflight_ssh_conf
+    _write_ssh_conf
     PEER_SSH_USER="$SSH_USER"
     _save_settings
+    _install_include
+    ;;
 
-    if [[ ! -d "$SSH_DIR" ]]; then
-      mkdir -p "$SSH_DIR"
-      chmod 700 "$SSH_DIR"
+  key)
+    if [[ "$OS" != "Darwin" ]]; then
+      echo "✗ make ssh-key is macOS only (needs the Apple Keychain); on $OS, set up keys by hand" >&2
+      exit 1
     fi
-    [[ -f "$SSH_CONFIG" ]] || (umask 077 && : > "$SSH_CONFIG")
+    _require_peer_ip
+    command -v ssh-copy-id >/dev/null 2>&1 || { echo "✗ ssh-copy-id not found" >&2; exit 1; }
 
-    # ssh config does not expand ~ or $HOME reliably across versions; use the real path
-    INCLUDE_LINE="Include $(pwd -P)/$MANAGED_CONF"
-    MODE="$(_file_mode "$SSH_CONFIG")"
-    TMP="$(mktemp "${SSH_CONFIG}.XXXXXX")"
-    {
-      # marker + Include must sit at the very top: an Include below a Host/Match
-      # block would only apply inside that block
-      printf '%s\n%s\n' "$MARKER" "$INCLUDE_LINE"
-      _strip_managed "$SSH_CONFIG"
-    } > "$TMP"
-    chmod "$MODE" "$TMP"
-    mv "$TMP" "$SSH_CONFIG"
+    # keep a custom alias from an earlier ssh-setup HOST=<alias>
+    if [[ -z "$HOST_ALIAS" && -f "$MANAGED_CONF" ]]; then
+      HOST_ALIAS="$(awk -v f="$FIXED_ALIAS" '$1 == "Host" { for (i = 2; i <= NF; i++) if ($i != f) { print $i; exit } }' "$MANAGED_CONF")"
+    fi
+    _preflight_ssh_conf
 
-    echo "✓ ssh config ready:"
-    echo "    ssh ${HOST_ALIAS:-$FIXED_ALIAS}        (${SSH_USER}@${PEER_IP})"
-    echo "  Wrote $MANAGED_CONF; added one Include line to $SSH_CONFIG."
-    echo "  IP or user changed later? Re-run make ssh-setup. Undo: make ssh-teardown"
+    # check-only: never enable Remote Login for the user
+    if ! nc -z -G 5 "$PEER_IP" 22 >/dev/null 2>&1; then
+      echo "✗ $PEER_IP:22 is not reachable over the tunnel" >&2
+      echo "  On the OTHER Mac enable System Settings → General → Sharing → Remote Login," >&2
+      echo "  and check the tunnel: make status / ping $PEER_IP" >&2
+      exit 1
+    fi
+
+    mkdir -p "$SSH_DIR"
+    chmod 700 "$SSH_DIR"
+    if [[ -f "$KEY_FILE" ]]; then
+      if [[ ! -f "$KEY_FILE.pub" ]]; then
+        echo "✗ $KEY_FILE exists but $KEY_FILE.pub is missing. Recreate it (asks for the passphrase), then re-run:" >&2
+        echo "    ssh-keygen -y -f $KEY_FILE > $KEY_FILE.pub" >&2
+        exit 1
+      fi
+      echo "ℹ Reusing existing key $KEY_FILE"
+    else
+      echo "ℹ Creating $KEY_FILE — choose a passphrase when asked"
+      ssh-keygen -t ed25519 -f "$KEY_FILE" -C "$(hostname)-stunmesh"
+    fi
+
+    KEYCHAIN_OK=1
+    "$SSH_ADD_BIN" --apple-use-keychain "$KEY_FILE" || {
+      KEYCHAIN_OK=0
+      echo "⚠ Could not add the key to the Keychain; ssh may ask for its passphrase" >&2
+    }
+
+    SSH_KEY_AUTH=1
+    _write_ssh_conf
+    _install_include
+    # reload so a store peer's IP/user are not written into settings.env
+    _saved_ip="$PEER_IP"; _saved_user="$PEER_SSH_USER"
+    _load_settings
+    SSH_KEY_AUTH=1
+    (( PEER_FROM_STORE )) || PEER_SSH_USER="$SSH_USER"
+    _save_settings
+    PEER_IP="$_saved_ip"; PEER_SSH_USER="$_saved_user"
+
+    echo "ℹ Installing the public key on ${SSH_USER}@${PEER_IP} — enter that Mac's password once"
+    ssh-copy-id -i "$KEY_FILE.pub" "${SSH_USER}@${PEER_IP}"
+
+    if ssh -o BatchMode=yes -o PreferredAuthentications=publickey -o PasswordAuthentication=no "${HOST_ALIAS:-$FIXED_ALIAS}" true; then
+      echo "✓ Key login works: ssh ${HOST_ALIAS:-$FIXED_ALIAS}"
+      echo "  For login in the other direction, run make ssh-key on the other Mac too."
+    else
+      if (( ! KEYCHAIN_OK )); then
+        echo "✗ Key login failed, and the key was not added to the Keychain/agent. Run: $SSH_ADD_BIN --apple-use-keychain $KEY_FILE — then retry make ssh-key" >&2
+      else
+        echo "✗ Key login failed. Check ~/.ssh/authorized_keys on the peer (permissions 600, ~/.ssh 700) and run: ssh -vvv ${HOST_ALIAS:-$FIXED_ALIAS}" >&2
+      fi
+      exit 1
+    fi
+    if ! nc -z -G 2 127.0.0.1 22 >/dev/null 2>&1; then
+      echo "⚠ Remote Login is off on THIS Mac, so the peer cannot log in back." >&2
+      echo "  Enable System Settings → General → Sharing → Remote Login." >&2
+    fi
     ;;
 
   teardown)
@@ -216,10 +313,20 @@ EOF
     chmod "$MODE" "$TMP"
     mv "$TMP" "$SSH_CONFIG"
     echo "✓ Removed the Include line from $SSH_CONFIG ($MANAGED_CONF kept; delete it if unwanted)"
+    if [[ "$SSH_KEY_AUTH" == "1" ]]; then
+      echo "ℹ This Mac's public key is still in the peer's authorized_keys. To revoke it, run ON THE PEER:"
+      BLOB=""
+      [[ -f "$KEY_FILE.pub" ]] && BLOB="$(awk 'NR == 1 { print $2 }' "$KEY_FILE.pub")"
+      if [[ -n "$BLOB" ]]; then
+        echo "    grep -vF '$BLOB' ~/.ssh/authorized_keys > ~/.ssh/authorized_keys.tmp && mv ~/.ssh/authorized_keys.tmp ~/.ssh/authorized_keys && chmod 600 ~/.ssh/authorized_keys"
+      else
+        echo "    $KEY_FILE.pub not found here; edit ~/.ssh/authorized_keys on the peer and delete the line holding this Mac's key"
+      fi
+    fi
     ;;
 
   *)
-    echo "usage: $0 connect|proxy|setup|teardown [--host <alias>] [--user <name>] [--port <port>]" >&2
+    echo "usage: $0 connect|proxy|setup|key|teardown [--host <alias>] [--user <name>] [--port <port>]" >&2
     exit 1
     ;;
 esac

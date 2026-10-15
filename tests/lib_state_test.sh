@@ -33,7 +33,8 @@ EXPECTED="$(printf '%s\n' \
   'PEER_IP=10.66.0.2' \
   'PEER_KEY=BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB=' \
   'PEER_SSH_USER=peer-login' \
-  'DHT_ENDPOINT=')"
+  'DHT_ENDPOINT=' \
+  'SSH_KEY_AUTH=')"
 ACTUAL="$(cat state/settings.env)"
 [[ "$ACTUAL" == "$EXPECTED" ]] || { echo "shared settings writer produced unexpected content" >&2; exit 1; }
 

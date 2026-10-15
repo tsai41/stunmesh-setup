@@ -47,6 +47,10 @@ else
   echo "(remember to run start on the other machine too, then: ping $PEER_IP)"
 fi
 
+if _wg_running && [[ -f "$STATE/ssh.conf" && "${SSH_KEY_AUTH:-}" != "1" && "$OS" == "Darwin" ]]; then
+  echo "Optional (macOS): log in to the peer with an SSH key instead of a password: make ssh-key"
+fi
+
 if _peers_dir_active; then
   echo "Hub: $(_peer_count) peers configured (make list-peers)."
 else
