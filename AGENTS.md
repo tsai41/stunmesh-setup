@@ -38,6 +38,7 @@ When unsure which step a machine is on, run `make next` — it inspects local st
 - `start.sh` must not clobber an existing `config.yaml` — it only rewrites the interface-name line; `setup.sh` syncs its `public_key` line.
 - Dependency checks stay check-only: print install hints, never install.
 - Never commit runtime files; private key material must not appear in tracked files or command output.
+- The repo is public: tests, docs and examples use made-up hostnames, users, keys and IPs (the tunnel range `10.66.0.x` is fine), never real ones.
 
 ## Verify changes
 
