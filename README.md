@@ -73,7 +73,7 @@ make next         # the single next step for the current state
 ```
 
 - **`make ssh-setup`** adds a `stunmesh-peer` Host alias to `~/.ssh/config` (one Include line; existing aliases untouched), so plain `ssh stunmesh-peer` works from anywhere. `make ssh-teardown` removes it.
-- **`make ssh-key`** (macOS, optional) sets up key-based login to the peer: creates `~/.ssh/id_ed25519_stunmesh` (reused if present), adds it to the Keychain, installs the public key on the peer (you type its password once) and adds the key lines to the `stunmesh-peer` alias. The peer needs Remote Login enabled (System Settings → General → Sharing); this only checks, never enables. Run it on the other Mac too for the reverse direction. `make ssh-teardown` prints how to revoke the key on the peer; it never touches the peer.
+- **`make ssh-key`** (macOS, optional) sets up key-based login to the peer: creates `~/.ssh/id_ed25519_stunmesh` (reused if present), adds it to the Keychain, installs the public key on the peer (you type its password once) and adds the key lines to the `stunmesh-peer` alias and the peer's IP, so `make ssh` / `make proxy` log in with the key too. The peer needs Remote Login enabled (System Settings → General → Sharing); this only checks, never enables. Run it on the other Mac too for the reverse direction. `make ssh-teardown` prints how to revoke the key on the peer; it never touches the peer.
 - **Browse the peer's LAN** — its router page, a NAS, printers: `make proxy` opens a SOCKS5 proxy through the peer. See [docs/proxy.md](docs/proxy.md).
 
 - **Connect to more than one machine** — make this node a hub with `make add-peer` / `remove-peer` / `peers`. See [docs/hub.md](docs/hub.md).
