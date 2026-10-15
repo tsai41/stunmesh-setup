@@ -49,6 +49,21 @@ if [[ -n "$PEER_ARG" ]]; then
   PEER_IP="$ip"
   PEER_SSH_USER="$(_peer_field "$PEER_ARG" 4)"
   PEER_FROM_STORE=1
+elif (( $(_peer_count) > 1 )) && [[ "$ACTION" == "key" ]]; then
+  # installing a key needs a peer running sshd; the first peer may be a phone
+  _pname=""
+  if [[ -t 0 && -t 2 ]] && command -v fzf >/dev/null 2>&1; then
+    _pname="$(_all_peers | awk -F'\t' '{ print $1 "\t" $3 }' |
+      fzf --prompt='ssh-key peer> ' --delimiter='\t' --height=10 | cut -f1)" || true
+  fi
+  if [[ -z "$_pname" ]]; then
+    echo "✗ Multiple peers; choose one: make ssh-key PEER=<name>" >&2
+    _all_peers | awk -F'\t' '{ print "    " $1 "  (" $3 ")" }' >&2
+    exit 1
+  fi
+  PEER_IP="$(_peer_field "$_pname" 3)"
+  PEER_SSH_USER="$(_peer_field "$_pname" 4)"
+  PEER_FROM_STORE=1
 elif (( $(_peer_count) > 1 )); then
   IFS=$'\t' read -r _pname _pkey PEER_IP PEER_SSH_USER < <(_all_peers)
   PEER_FROM_STORE=1

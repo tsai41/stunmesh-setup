@@ -151,4 +151,17 @@ grep -q "grep -vF 'AAAA' " "$TMP/out" || fail "teardown lacks blob-based revoke 
 ! grep -q 'testhost' "$TMP/out" || fail "teardown still matches by hostname"
 ! grep -q 'PRIVATE' "$TMP/out" || fail "teardown leaked private key material"
 
-echo "ok: ssh-key reuses keys, refuses non-macOS, writes key lines, persists USER, preflights before keygen, prints blob revoke hint"
+# hub: several peers and no PEER= must not default to the first one
+mkdir -p "$TMP/repo/state/peers.d"
+printf 'KEY=CCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC=\nIP=10.66.0.4\n' > "$TMP/repo/state/peers.d/aphone.env"
+printf 'KEY=DDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDD=\nIP=10.66.0.3\nSSH_USER=dave\n' > "$TMP/repo/state/peers.d/mac.env"
+: > "$STUB_LOG"
+run key </dev/null >"$TMP/out" 2>&1 && fail "multi-peer ssh-key without PEER must fail"
+grep -q 'PEER=<name>' "$TMP/out" || fail "multi-peer hint missing"
+grep -q 'aphone  (10.66.0.4)' "$TMP/out" || fail "multi-peer list missing"
+! grep -q '^nc' "$STUB_LOG" || fail "multi-peer probed a peer without a choice"
+: > "$STUB_LOG"
+run key --peer mac </dev/null >"$TMP/out" 2>&1 || fail "ssh-key PEER=mac failed"
+grep -q 'ssh-copy-id .* dave@10.66.0.3' "$STUB_LOG" || fail "PEER=mac not used"
+
+echo "ok: ssh-key reuses keys, refuses non-macOS, writes key lines, persists USER, preflights before keygen, prints blob revoke hint, needs PEER on a hub"
