@@ -1,11 +1,14 @@
 #!/usr/bin/env bash
 # ssh.sh — SSH to the peer over the tunnel.
 #   connect   ssh <user>@PEER_IP (default action)
+#   forward   pick the peer's listening ports with fzf (or --ports) and forward them
+#             to the same ports on 127.0.0.1 here (ssh -L)
 #   proxy     SOCKS5 proxy on 127.0.0.1:<port> through the peer (ssh -D)
-#   setup     write state/ssh.conf + one Include line at the top of ~/.ssh/config
+#   setup    write state/ssh.conf + one Include line at the top of ~/.ssh/config
 #   teardown  remove that Include line again
 #   key       macOS only: key-based login to the peer (keygen, Keychain, ssh-copy-id)
 # Usage: make ssh [USER=<name>] / make proxy [PROXY_PORT=<port>] [USER=<name>]
+#        make forward [PORTS="3000 8080"] [PEER=<name>] [USER=<name>]
 #        make ssh-setup [HOST=<alias>] [USER=<name>] / make ssh-teardown
 #        make ssh-key [PEER=<name>] [USER=<name>]
 set -euo pipefail
@@ -26,12 +29,14 @@ HOST_ALIAS=""
 USER_ARG=""
 PEER_ARG=""
 PROXY_PORT="10000"
+PORTS_ARG=""
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --host) HOST_ALIAS="$2"; shift 2 ;;
     --user) USER_ARG="$2"; shift 2 ;;
     --peer) PEER_ARG="$2"; shift 2 ;;
     --port) PROXY_PORT="$2"; shift 2 ;;
+    --ports) PORTS_ARG="$2"; shift 2 ;;
     *) echo "unknown argument: $1" >&2; exit 1 ;;
   esac
 done
@@ -53,7 +58,7 @@ if [[ -n "$PEER_ARG" ]]; then
   PEER_FROM_STORE=1
 elif (( $(_peer_count) > 1 )); then
   _pname=""
-  if [[ "$ACTION" =~ ^(connect|proxy|setup|key)$ && -t 0 && -t 2 ]] && command -v fzf >/dev/null 2>&1; then
+  if [[ "$ACTION" =~ ^(connect|proxy|forward|setup|key)$ && -t 0 && -t 2 ]] && command -v fzf >/dev/null 2>&1; then
     _pname="$(_all_peers | awk -F'\t' '{ print $1 "\t" $3 }' |
       fzf --prompt='peer> ' --delimiter='\t' --height=10 | cut -f1)" || true
     [[ -n "$_pname" ]] || { echo "✗ No peer chosen" >&2; exit 1; }
@@ -237,6 +242,56 @@ case "$ACTION" in
     fi
     ;;
 
+  forward)
+    _require_peer_ip
+    _save_user
+    PORTS=()
+    if [[ -n "$PORTS_ARG" ]]; then
+      read -r -a PORTS <<< "${PORTS_ARG//,/ }"
+    elif [[ -t 0 && -t 2 ]] && command -v fzf >/dev/null 2>&1; then
+      echo "ℹ Listing ${SSH_USER}@${PEER_IP}'s listening ports (ssh may ask for a password)" >&2
+      # lsof only sees the peer user's own processes; ss lists all but without names
+      # shellcheck disable=SC2016  # $9/$4 are for the remote awk
+      REMOTE_LIST='if command -v lsof >/dev/null 2>&1; then
+        lsof -nP -iTCP -sTCP:LISTEN | awk '\''NR > 1 { n = $9; sub(/.*:/, "", n); print n "\t" $1 }'\''
+      else
+        ss -ltnH | awk '\''{ n = $4; sub(/.*:/, "", n); print n "\t-" }'\''
+      fi'
+      # shellcheck disable=SC2029  # the command string is built locally on purpose
+      LIST="$(ssh "${SSH_USER}@${PEER_IP}" "$REMOTE_LIST" | sort -un)" || {
+        echo "✗ Could not list ports on the peer (is Remote Login/sshd on?)" >&2
+        exit 1
+      }
+      [[ -n "$LIST" ]] || { echo "✗ The peer reports no listening ports" >&2; exit 1; }
+      CHOSEN="$(printf '%s\n' "$LIST" |
+        fzf -m --prompt='port (Tab = multi)> ' --delimiter='\t' --height=15 | cut -f1)" || true
+      [[ -n "$CHOSEN" ]] || { echo "✗ No port chosen" >&2; exit 1; }
+      while IFS= read -r line; do PORTS+=("$line"); done <<< "$CHOSEN"
+    else
+      echo "✗ No port list: pass PORTS=\"3000 8080\" (the fzf picker needs fzf and a terminal)" >&2
+      exit 1
+    fi
+    [[ ${#PORTS[@]} -gt 0 ]] || { echo "✗ No ports given" >&2; exit 1; }
+    FWD=()
+    for p in "${PORTS[@]}"; do
+      if ! [[ "$p" =~ ^[0-9]+$ ]] || (( p < 1 || p > 65535 )); then
+        echo "✗ Invalid port: $p (want 1-65535)" >&2
+        exit 1
+      fi
+      if nc -z 127.0.0.1 "$p" >/dev/null 2>&1; then
+        echo "✗ Local port $p is already in use on this machine" >&2
+        exit 1
+      fi
+      FWD+=(-L "127.0.0.1:${p}:localhost:${p}")
+    done
+    _banner "Forwarding ${PORTS[*]} from ${SSH_USER}@${PEER_IP} to 127.0.0.1 — open http://localhost:<port>; Ctrl-C ends it"
+    RC=0
+    ssh -N -o ExitOnForwardFailure=yes "${FWD[@]}" "${SSH_USER}@${PEER_IP}" || RC=$?
+    if (( RC == 255 )); then
+      exit 255
+    fi
+    ;;
+
   setup)
     _preflight_ssh_conf
     _write_ssh_conf
@@ -343,7 +398,7 @@ case "$ACTION" in
     ;;
 
   *)
-    echo "usage: $0 connect|proxy|setup|key|teardown [--host <alias>] [--user <name>] [--port <port>]" >&2
+    echo "usage: $0 connect|proxy|forward|setup|key|teardown [--host <alias>] [--user <name>] [--port <port>] [--ports <list>]" >&2
     exit 1
     ;;
 esac
