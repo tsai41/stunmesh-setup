@@ -3,7 +3,7 @@
 #   make setup NODE=B PEER_KEY=<the key node A printed>
 #   make start / stop / status / logs
 
-.PHONY: setup update start stop restart status logs next key ssh proxy forward ssh-setup ssh-key ssh-teardown add-peer remove-peer peers list-peers dht-local-up dht-local-down dht-use-local dht-use-public launchd-install launchd-uninstall launchd-status launchd-restart check test
+.PHONY: setup update start stop restart status logs next key ssh proxy forward play ssh-setup ssh-key ssh-teardown add-peer remove-peer peers list-peers dht-local-up dht-local-down dht-use-local dht-use-public launchd-install launchd-uninstall launchd-status launchd-restart check test
 
 next:
 	@./scripts/next.sh
@@ -69,6 +69,9 @@ proxy:
 
 forward:
 	@./scripts/ssh.sh forward $(if $(PEER),--peer "$(PEER)") $(if $(PORTS),--ports "$(PORTS)") $(if $(filter command line,$(origin USER)),--user "$(USER)")
+
+play:
+	@./scripts/ssh.sh play $(if $(PEER),--peer "$(PEER)") $(if $(FILE),--file "$(FILE)") $(if $(filter command line,$(origin USER)),--user "$(USER)")
 
 ssh-setup:
 	@./scripts/ssh.sh setup $(if $(HOST),--host "$(HOST)") $(if $(filter command line,$(origin USER)),--user "$(USER)")

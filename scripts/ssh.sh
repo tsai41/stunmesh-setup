@@ -3,12 +3,14 @@
 #   connect   ssh <user>@PEER_IP (default action)
 #   forward   pick the peer's listening ports with fzf (or --ports) and forward them
 #             to the same ports on 127.0.0.1 here (ssh -L)
+#   play      copy one file from the peer into state/play/ and open it here
 #   proxy     SOCKS5 proxy on 127.0.0.1:<port> through the peer (ssh -D)
 #   setup    write state/ssh.conf + one Include line at the top of ~/.ssh/config
 #   teardown  remove that Include line again
 #   key       macOS only: key-based login to the peer (keygen, Keychain, ssh-copy-id)
 # Usage: make ssh [USER=<name>] / make proxy [PROXY_PORT=<port>] [USER=<name>]
 #        make forward [PORTS="3000 8080"] [PEER=<name>] [USER=<name>]
+#        make play FILE=<path on the peer> [PEER=<name>] [USER=<name>]
 #        make ssh-setup [HOST=<alias>] [USER=<name>] / make ssh-teardown
 #        make ssh-key [PEER=<name>] [USER=<name>]
 set -euo pipefail
@@ -30,6 +32,7 @@ USER_ARG=""
 PEER_ARG=""
 PROXY_PORT="10000"
 PORTS_ARG=""
+FILE_ARG=""
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --host) HOST_ALIAS="$2"; shift 2 ;;
@@ -37,6 +40,7 @@ while [[ $# -gt 0 ]]; do
     --peer) PEER_ARG="$2"; shift 2 ;;
     --port) PROXY_PORT="$2"; shift 2 ;;
     --ports) PORTS_ARG="$2"; shift 2 ;;
+    --file) FILE_ARG="$2"; shift 2 ;;
     *) echo "unknown argument: $1" >&2; exit 1 ;;
   esac
 done
@@ -58,7 +62,7 @@ if [[ -n "$PEER_ARG" ]]; then
   PEER_FROM_STORE=1
 elif (( $(_peer_count) > 1 )); then
   _pname=""
-  if [[ "$ACTION" =~ ^(connect|proxy|forward|setup|key)$ && -t 0 && -t 2 ]] && command -v fzf >/dev/null 2>&1; then
+  if [[ "$ACTION" =~ ^(connect|proxy|forward|play|setup|key)$ && -t 0 && -t 2 ]] && command -v fzf >/dev/null 2>&1; then
     _pname="$(_all_peers | awk -F'\t' '{ print $1 "\t" $3 }' |
       fzf --prompt='peer> ' --delimiter='\t' --height=10 | cut -f1)" || true
     [[ -n "$_pname" ]] || { echo "✗ No peer chosen" >&2; exit 1; }
@@ -292,6 +296,31 @@ case "$ACTION" in
     fi
     ;;
 
+  play)
+    _require_peer_ip
+    [[ -n "$FILE_ARG" ]] || { echo "✗ Which file? make play FILE=/path/on/the/peer.mp4" >&2; exit 1; }
+    NAME="${FILE_ARG##*/}"
+    [[ -n "$NAME" ]] || { echo "✗ FILE must name a file, not a directory: $FILE_ARG" >&2; exit 1; }
+    if command -v open >/dev/null 2>&1; then OPENER=open
+    elif command -v xdg-open >/dev/null 2>&1; then OPENER=xdg-open
+    else echo "✗ Neither open nor xdg-open found; the file would be copied but not opened" >&2; exit 1
+    fi
+    _save_user
+    mkdir -p "$STATE/play"
+    DEST="$STATE/play/$NAME"
+    echo "ℹ Copying ${SSH_USER}@${PEER_IP}:${FILE_ARG}"
+    # cat over ssh instead of scp: %q quotes the path once, whatever scp's protocol does with it
+    # shellcheck disable=SC2029  # the command string is built locally on purpose
+    if ! ssh "${SSH_USER}@${PEER_IP}" "cat -- $(printf '%q' "$FILE_ARG")" > "$DEST.part"; then
+      rm -f "$DEST.part"
+      echo "✗ Could not read $FILE_ARG on the peer (path wrong, or ssh login failed)" >&2
+      exit 1
+    fi
+    mv "$DEST.part" "$DEST"
+    echo "✓ Saved to $DEST"
+    "$OPENER" "$DEST"
+    ;;
+
   setup)
     _preflight_ssh_conf
     _write_ssh_conf
@@ -398,7 +427,7 @@ case "$ACTION" in
     ;;
 
   *)
-    echo "usage: $0 connect|proxy|forward|setup|key|teardown [--host <alias>] [--user <name>] [--port <port>] [--ports <list>]" >&2
+    echo "usage: $0 connect|proxy|forward|play|setup|key|teardown [--host <alias>] [--user <name>] [--port <port>] [--ports <list>] [--file <path>]" >&2
     exit 1
     ;;
 esac
