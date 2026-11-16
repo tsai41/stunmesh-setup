@@ -47,15 +47,17 @@ Removing the last extra peer leaves a single peer, which reverts to the /24
 
 ## Reach a specific peer
 
-With several peers configured, `make ssh` / `make proxy` / `make ssh-setup` /
-`make ssh-key` open an [fzf](https://github.com/junegunn/fzf) picker when run
-in a terminal with fzf installed. Without fzf, `make ssh` / `make proxy` /
-`make ssh-setup` use the first peer and `make ssh-key` stops and lists the
-peers. Name one directly:
+With several peers configured, `make ssh` / `make proxy` / `make forward` /
+`make play` / `make ssh-setup` / `make ssh-key` open an
+[fzf](https://github.com/junegunn/fzf) picker when run in a terminal with fzf
+installed. Without fzf, all but `make ssh-key` use the first peer and
+`make ssh-key` stops and lists the peers. Name one directly:
 
 ```bash
 make ssh PEER=c
 make proxy PEER=c
+make forward PEER=c PORTS="3000 8080"
+make play PEER=c FILE=/path/on/c/demo.mp4
 ```
 
 ## What the store changes

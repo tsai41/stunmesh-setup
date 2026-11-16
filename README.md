@@ -64,6 +64,8 @@ the effect of sleep.
 
 ```bash
 make ssh          # ssh into the peer over the tunnel (USER=<name> to override, remembered)
+make forward      # open the peer's localhost web pages here: pick ports in fzf (or PORTS="3000 8080")
+make play FILE=/path/on/the/peer/demo.mp4   # copy a file from the peer and open it here
 make stop         # take the tunnel down (both sides lose it)
 make restart
 make update       # fetch the latest stunmesh-go release; restart daemon if it is running

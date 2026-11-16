@@ -10,6 +10,7 @@ Everything the scripts generate lives in `state/` — gitignored as a whole (it 
 | `state/settings.env` | node identity — tunnel IPs + peer public key + peer SSH user + selected DHT endpoint; read as a plain `KEY=VALUE` list | no |
 | `state/peers.d/<name>.env` | one file per extra peer for the hub use-case (`KEY` / `IP` / `SSH_USER`); absent on a plain 2-node setup. See [hub.md](hub.md) | no (public keys only) |
 | `state/ssh.conf` | Host alias block, written by `make ssh-setup` | no |
+| `state/play/` | files copied from the peer by `make play`; never cleaned automatically | depends on the file |
 | `state/stunmesh-go` | upstream release binary, plus `stunmesh.log` / `stunmesh.pid` at runtime | no |
 
 `stunmesh0.conf`, `config.yaml`, and `settings.env` are all fine to hand-edit — editing one `settings.env` line is a valid alternative to re-running setup. Delete any generated file to get a fresh one.
