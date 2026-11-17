@@ -42,46 +42,45 @@ ping 10.66.0.2   # from A; B pings 10.66.0.1; ~1-2 min to punch through
 
 ### macOS: start automatically at boot
 
-After setup has completed and a peer key is configured, install the macOS-only
-`LaunchDaemon` from this repo:
+After setup has completed and a peer key is configured, install the macOS-only `LaunchDaemon` from this repo:
 
 ```bash
 make launchd-install       # asks for sudo once; starts now and at future boots
 make launchd-status
 ```
 
-It runs as root so it can create the WireGuard interface without an interactive
-password prompt, and restarts after an unexpected exit. To disable it:
+It runs as root so it can create the WireGuard interface without an interactive password prompt, and restarts after an unexpected exit. To disable it:
 
 ```bash
 make launchd-uninstall
 ```
 
-See [docs/macos-launchd.md](docs/macos-launchd.md) for logs, lifecycle, and
-the effect of sleep.
+See [docs/macos-launchd.md](docs/macos-launchd.md) for logs, lifecycle, and the effect of sleep.
 
 ## After it's up
 
 ```bash
-make ssh          # ssh into the peer over the tunnel (USER=<name> to override, remembered)
-make forward      # open the peer's localhost web pages here: pick ports in fzf (or PORTS="3000 8080")
-make play FILE=/path/on/the/peer/demo.mp4   # copy a file from the peer and open it here
-make stop         # take the tunnel down (both sides lose it)
+# reach the peer
+make ssh                     # ssh into the peer over the tunnel (USER=<name> to override, remembered)
+make forward                 # the peer's localhost ports, here: pick in fzf, or PORTS="3000 8080"
+make play FILE=/path/on/peer/demo.mp4   # copy one file from the peer and open it here
+make proxy                   # SOCKS5 proxy through the peer, to browse its LAN
+
+# run the tunnel
+make status                  # which of DHT / WireGuard / stunmesh-go are up, and which peers this node reaches
+make stop                    # take the tunnel down (both sides lose it)
 make restart
-make update       # fetch the latest stunmesh-go release; restart daemon if it is running
-make status       # which of DHT / WireGuard / stunmesh-go are up, and which peers this node reaches
-make peers        # every node this node is configured to reach, with the other end's key
-make next         # the single next step for the current state
+make update                  # fetch the latest stunmesh-go release; restart the daemon if it is running
+make peers                   # every node this node is configured to reach, with the other end's key
+make next                    # the single next step for the current state
 ```
 
-- **`make ssh-setup`** adds a `stunmesh-peer` Host alias to `~/.ssh/config` (one Include line; existing aliases untouched), so plain `ssh stunmesh-peer` works from anywhere. `make ssh-teardown` removes it.
-- **`make ssh-key`** (macOS, optional) sets up key-based login to the peer: creates `~/.ssh/id_ed25519_stunmesh` (reused if present), adds it to the Keychain, installs the public key on the peer (you type its password once) and adds the key lines to the `stunmesh-peer` alias and the peer's IP, so `make ssh` / `make proxy` log in with the key too. The peer needs Remote Login enabled (System Settings → General → Sharing); this only checks, never enables. Run it on the other Mac too for the reverse direction. `make ssh-teardown` prints how to revoke the key on the peer; it never touches the peer.
-- **Open the peer's local web pages** (`localhost:3000` and the like, which only listen on the peer's loopback): `make forward` lists the peer's listening ports over SSH, you pick one or several in fzf (Tab to multi-select), and each shows up on the same `localhost:<port>` here until Ctrl-C. No fzf or a known list: `make forward PORTS="3000 8080"`. Needs SSH login to the peer (`make ssh-key` makes it passwordless); the peer's ports are never opened to the tunnel.
-- **Play or open a file that lives on the peer** (a video, a PDF): `make play FILE=/path/on/the/peer/demo.mp4` copies it to `state/play/` here and opens it with the default app (`open` on macOS, `xdg-open` on Linux). Same SSH login as `make ssh`; the file is copied whole before it opens.
+- **Open the peer's local web pages** (`localhost:3000` and the like, which only listen on the peer's loopback): `make forward` lists the peer's listening ports over SSH, you pick one or several in fzf (Tab to multi-select), and each shows up on the same `localhost:<port>` here until Ctrl-C. Without fzf, or when you already know the ports: `make forward PORTS="3000 8080"`. A port already in use here is refused. The peer's ports are never opened to the tunnel.
+- **Play or open a file that lives on the peer** (a video, a PDF): `make play FILE=/path/on/peer/demo.mp4` copies it to `state/play/` here and opens it with the default app (`open` on macOS, `xdg-open` on Linux). The file is copied whole before it opens.
 - **Browse the peer's LAN** — its router page, a NAS, printers: `make proxy` opens a SOCKS5 proxy through the peer. See [docs/proxy.md](docs/proxy.md).
-
-- **Connect to more than one machine** — make this node a hub with `make add-peer` / `remove-peer` / `peers`. See [docs/hub.md](docs/hub.md).
-
+- **`make ssh-setup`** adds a `stunmesh-peer` Host alias to `~/.ssh/config` (one Include line; existing aliases untouched), so plain `ssh stunmesh-peer` works from anywhere. `make ssh-teardown` removes it.
+- **`make ssh-key`** (macOS, optional) makes the SSH login passwordless for `make ssh` / `forward` / `play` / `proxy`: it creates `~/.ssh/id_ed25519_stunmesh` (reused if present), adds it to the Keychain and installs the public key on the peer (you type its password once). The peer needs Remote Login on (System Settings → General → Sharing); this only checks, never enables. Run it on the other Mac too for the reverse direction. `make ssh-teardown` prints how to revoke the key on the peer; it never touches the peer.
+- **Connect to more than one machine** — make this node a hub with `make add-peer` / `remove-peer` / `peers`; `make ssh` / `forward` / `play` / `proxy` then take `PEER=<name>`. See [docs/hub.md](docs/hub.md).
 - **Use a local DHT deliberately** — the public Jami proxy is the default. Docker is never started automatically: `make dht-local-up`, then `make dht-use-local`. Return to the public default with `make dht-use-public`.
 
 Scripts also run directly, e.g. `./scripts/setup.sh --node A`.
